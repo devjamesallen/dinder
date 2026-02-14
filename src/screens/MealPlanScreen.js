@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
   Modal,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { mergeIngredients } from '../utils/ingredientMerger';
+import { fetchRecipeDetails } from '../services/spoonacular';
 
 const { width } = Dimensions.get('window');
 const CARD_IMAGE_HEIGHT = 200;
@@ -43,6 +45,31 @@ export default function MealPlanScreen({ navigation }) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [activeTab, setActiveTab] = useState('ingredients');
+  const [instructions, setInstructions] = useState(null);
+  const [loadingInstructions, setLoadingInstructions] = useState(false);
+
+  // Fetch instructions when a recipe is opened
+  useEffect(() => {
+    if (!selectedRecipe) {
+      setInstructions(null);
+      setActiveTab('ingredients');
+      return;
+    }
+    let cancelled = false;
+    setLoadingInstructions(true);
+    fetchRecipeDetails(selectedRecipe.id)
+      .then(details => {
+        if (!cancelled) setInstructions(details.instructions || '');
+      })
+      .catch(() => {
+        if (!cancelled) setInstructions('');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInstructions(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedRecipe]);
 
   const handleRemove = (recipeId) => {
     Alert.alert(
@@ -276,13 +303,67 @@ export default function MealPlanScreen({ navigation }) {
                   </View>
                 </View>
 
-                <Text style={styles.sectionTitle}>Ingredients</Text>
-                {selectedRecipe.ingredients.map((ing, idx) => (
-                  <View key={idx} style={styles.ingredientRow}>
-                    <View style={styles.bulletDot} />
-                    <Text style={styles.ingredientText}>{ing.original}</Text>
+                {/* Tab bar */}
+                <View style={styles.tabBar}>
+                  <TouchableOpacity
+                    style={[styles.tab, activeTab === 'ingredients' && styles.tabActive]}
+                    onPress={() => setActiveTab('ingredients')}
+                  >
+                    <Text style={[styles.tabText, activeTab === 'ingredients' && styles.tabTextActive]}>
+                      Ingredients
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.tab, activeTab === 'instructions' && styles.tabActive]}
+                    onPress={() => setActiveTab('instructions')}
+                  >
+                    <Text style={[styles.tabText, activeTab === 'instructions' && styles.tabTextActive]}>
+                      Instructions
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Tab content */}
+                {activeTab === 'ingredients' ? (
+                  <View style={styles.tabContent}>
+                    {selectedRecipe.ingredients.map((ing, idx) => (
+                      <View key={idx} style={styles.ingredientRow}>
+                        <View style={styles.bulletDot} />
+                        <Text style={styles.ingredientText}>{ing.original}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                ) : (
+                  <View style={styles.tabContent}>
+                    {loadingInstructions ? (
+                      <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 20 }} />
+                    ) : instructions ? (
+                      instructions
+                        .split(/(?<=\.)\s+/)
+                        .filter(s => s.trim().length > 0)
+                        .map((step, idx) => (
+                          <View key={idx} style={styles.stepRow}>
+                            <View style={styles.stepNumber}>
+                              <Text style={styles.stepNumberText}>{idx + 1}</Text>
+                            </View>
+                            <Text style={styles.stepText}>{step.trim()}</Text>
+                          </View>
+                        ))
+                    ) : (
+                      <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                        <Ionicons name="document-text-outline" size={40} color={colors.textTertiary} />
+                        <Text style={styles.noInstructionsText}>
+                          No instructions available
+                        </Text>
+                        {selectedRecipe.sourceUrl && (
+                          <Text style={styles.sourceHint}>
+                            Check the original recipe source for directions
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -483,5 +564,75 @@ function createStyles(colors) {
       backgroundColor: colors.accent, marginTop: 7, marginRight: 10,
     },
     ingredientText: { color: colors.text, fontSize: 15, flex: 1, lineHeight: 20 },
+
+    // Tab bar
+    tabBar: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      marginBottom: 16,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    tabActive: {
+      borderBottomColor: colors.accent,
+    },
+    tabText: {
+      fontSize: 15,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    tabTextActive: {
+      color: colors.accent,
+      fontWeight: '700',
+    },
+    tabContent: {
+      minHeight: 100,
+    },
+
+    // Instruction steps
+    stepRow: {
+      flexDirection: 'row',
+      marginBottom: 14,
+      alignItems: 'flex-start',
+    },
+    stepNumber: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.accent,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+      marginTop: 1,
+    },
+    stepNumberText: {
+      color: colors.background,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    stepText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+    noInstructionsText: {
+      color: colors.textSecondary,
+      fontSize: 16,
+      marginTop: 12,
+      textAlign: 'center',
+    },
+    sourceHint: {
+      color: colors.textTertiary,
+      fontSize: 13,
+      marginTop: 8,
+      textAlign: 'center',
+    },
   });
 }

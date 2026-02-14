@@ -131,15 +131,24 @@ export async function getValidToken(currentToken, currentRefreshToken) {
         return parsed.accessToken;
       }
       // Token is expired or about to expire, refresh it
-      const refreshed = await refreshAccessToken(
-        parsed.refreshToken || currentRefreshToken
-      );
-      return refreshed.accessToken;
+      try {
+        const refreshed = await refreshAccessToken(
+          parsed.refreshToken || currentRefreshToken
+        );
+        return refreshed.accessToken;
+      } catch (refreshErr) {
+        // Refresh token is also dead — clear stale tokens and tell caller
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        throw new Error('SESSION_EXPIRED');
+      }
     }
   } catch (e) {
+    if (e.message === 'SESSION_EXPIRED') throw e;
     console.log('Token retrieval error:', e);
   }
-  return currentToken;
+  // No stored tokens — try whatever was passed in (may also be stale)
+  if (currentToken) return currentToken;
+  throw new Error('SESSION_EXPIRED');
 }
 
 /**
@@ -175,7 +184,7 @@ export async function clearTokens() {
 export async function searchProducts(accessToken, ingredientName, locationId) {
   const params = new URLSearchParams({
     'filter.term': ingredientName,
-    'filter.limit': '5',
+    'filter.limit': '15',
   });
 
   if (locationId) {

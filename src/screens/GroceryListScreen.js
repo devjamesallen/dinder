@@ -13,6 +13,77 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { searchProducts, addToCart, getValidToken } from '../services/kroger';
+import { toSearchTerm } from '../utils/ingredientMerger';
+
+// ── Kroger product scoring ──────────────────────────────────────────
+// Because every item on a recipe grocery list is a raw ingredient, we
+// aggressively penalize any product that looks like a prepared food.
+// The penalty only fires when the word is in the PRODUCT name but NOT
+// in our search term, so searching "pasta" still matches actual pasta.
+const STOP_WORDS = new Set(['and', 'the', 'for', 'with', 'into', 'from']);
+
+const PREPARED = new Set([
+  // Prepared meals & dishes
+  'soup', 'stew', 'chowder', 'bisque', 'chili',
+  'pasta', 'ravioli', 'lasagna', 'macaroni', 'noodle', 'noodles',
+  'pizza', 'flatbread', 'calzone',
+  'sandwich', 'wrap', 'burrito', 'taco', 'enchilada', 'quesadilla',
+  'casserole', 'potpie', 'dinner', 'meal', 'entree', 'bowl',
+  // Condiments & derivatives
+  'vinegar', 'sauce', 'dressing', 'seasoning', 'marinade',
+  'gravy', 'broth', 'stock', 'bouillon',
+  // Snacks & sweets
+  'chips', 'crackers', 'cracker', 'pretzels',
+  'candy', 'chocolate', 'cookie', 'cookies', 'cake', 'pie', 'muffin',
+  'cereal', 'granola', 'bar', 'snack',
+  // Processed forms
+  'powder', 'paste', 'extract', 'concentrate',
+  'syrup', 'jam', 'jelly', 'preserves',
+  'spread', 'dip', 'hummus',
+  'nuggets', 'tender', 'tenders', 'strip', 'strips',
+  'panko', 'breading', 'croutons', 'stuffing', 'breadcrumbs',
+  'mix', 'blend', 'kit', 'supplement',
+  // Preparation styles in product names
+  'glazed', 'marinated', 'crusted', 'stuffed', 'infused',
+  // Proteins — penalize when NOT in search (product is a different food)
+  'pork', 'chicken', 'beef', 'turkey', 'steak', 'filet',
+  'fillet', 'loin', 'salmon', 'shrimp', 'lamb', 'veal',
+  'roast', 'chop', 'chops', 'wing', 'wings', 'thigh',
+  'thighs', 'breast', 'ribs', 'sausage', 'patty', 'patties',
+]);
+
+/** Score a single Kroger product against our search term. */
+function scoreProduct(product, words) {
+  const descWords = (product.name || '').toLowerCase().split(/\s+/);
+  const hits = words.filter(w =>
+    descWords.some(dw => dw.includes(w) || w.includes(dw))
+  ).length;
+  if (hits === 0) return 0;
+
+  const recall = words.length > 0 ? hits / words.length : 0;
+  const precision = descWords.length > 0 ? hits / descWords.length : 0;
+  let score = (recall * 2 + precision) / 3;
+
+  // Penalize prepared/derivative products
+  const penalties = descWords.filter(dw =>
+    PREPARED.has(dw) && !words.some(w => dw.includes(w) || w.includes(dw))
+  ).length;
+  if (penalties > 0) score *= Math.pow(0.25, penalties);
+
+  return score;
+}
+
+/** Pick the best product from an array, returns { match, score } */
+function pickBest(products, searchTerm) {
+  const words = searchTerm.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+  let bestMatch = null;
+  let bestScore = -1;
+  for (const product of products) {
+    const s = scoreProduct(product, words);
+    if (s > bestScore) { bestScore = s; bestMatch = product; }
+  }
+  return { match: bestMatch, score: bestScore };
+}
 
 export default function GroceryListScreen({ navigation }) {
   const { state, dispatch } = useApp();
@@ -90,32 +161,70 @@ export default function GroceryListScreen({ navigation }) {
 
       const cartItems = [];
       let matched = 0;
-      let failed = 0;
+      const notFound = [];   // items where Kroger returned no results or no good match
+      const apiErrors = [];  // items where the API call itself failed
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         setSendProgress(`Searching: ${item.displayName} (${i + 1}/${items.length})`);
 
         try {
+          // Clean the name so Kroger gets a useful search term
+          let searchTerm;
+          try {
+            searchTerm = toSearchTerm(item.displayName);
+          } catch (_) {
+            searchTerm = '';
+          }
+          if (!searchTerm) searchTerm = item.displayName;
+
           const products = await searchProducts(
             token,
-            item.displayName,
+            searchTerm,
             locationId
           );
 
           if (products.length > 0) {
-            // Take the first (best) match
-            cartItems.push({
-              upc: products[0].upc,
-              quantity: 1,
-            });
-            matched++;
+            let { match: bestMatch, score: bestScore } = pickBest(products, searchTerm);
+
+            // If all results were prepared products, retry with an
+            // aisle-appropriate modifier to bias Kroger toward raw ingredients
+            if (bestScore < 0.25) {
+              const aisle = (item.aisle || '').toLowerCase();
+              const retryTerms = [];
+              if (aisle.includes('meat') || aisle.includes('poultry')) {
+                retryTerms.push(`${searchTerm} meat`);
+              } else if (aisle.includes('seafood')) {
+                retryTerms.push(`fresh ${searchTerm} seafood`);
+              }
+              // Always try "fresh" as a fallback modifier
+              retryTerms.push(`fresh ${searchTerm}`);
+
+              for (const retryTerm of retryTerms) {
+                if (bestScore >= 0.25) break; // found a good match, stop retrying
+                setSendProgress(`Retrying: ${retryTerm} (${i + 1}/${items.length})`);
+                const retryProducts = await searchProducts(token, retryTerm, locationId);
+                if (retryProducts.length > 0) {
+                  const retry = pickBest(retryProducts, searchTerm);
+                  if (retry.score > bestScore) {
+                    bestMatch = retry.match;
+                    bestScore = retry.score;
+                  }
+                }
+              }
+            }
+
+            if (bestMatch && bestScore >= 0.25) {
+              cartItems.push({ upc: bestMatch.upc, quantity: 1 });
+              matched++;
+            } else {
+              notFound.push(item.displayName);
+            }
           } else {
-            failed++;
+            notFound.push(item.displayName);
           }
         } catch (e) {
-          console.log(`Failed to find product for: ${item.displayName}`, e);
-          failed++;
+          apiErrors.push(`${item.displayName} (${e.message})`);
         }
       }
 
@@ -124,14 +233,28 @@ export default function GroceryListScreen({ navigation }) {
         await addToCart(token, cartItems);
       }
 
-      Alert.alert(
-        'Done!',
-        `Added ${matched} item${matched !== 1 ? 's' : ''} to your Kroger cart.${
-          failed > 0 ? `\n${failed} item${failed !== 1 ? 's' : ''} couldn't be found.` : ''
-        }`
-      );
+      let message = `Added ${matched} item${matched !== 1 ? 's' : ''} to your Kroger cart.`;
+      if (notFound.length > 0) {
+        message += `\n\nNo match for ${notFound.length} item${notFound.length !== 1 ? 's' : ''}:\n• ${notFound.join('\n• ')}`;
+      }
+      if (apiErrors.length > 0) {
+        message += `\n\nAPI errors for ${apiErrors.length} item${apiErrors.length !== 1 ? 's' : ''}:\n• ${apiErrors.join('\n• ')}`;
+      }
+      Alert.alert('Done!', message);
     } catch (e) {
-      Alert.alert('Error', `Failed to send to Kroger: ${e.message}`);
+      if (e.message === 'SESSION_EXPIRED') {
+        dispatch({ type: 'DISCONNECT_KROGER' });
+        Alert.alert(
+          'Kroger Session Expired',
+          'Your Kroger login has expired. Please reconnect in Settings.',
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Go to Settings', onPress: () => navigation.navigate('Settings') },
+          ]
+        );
+      } else {
+        Alert.alert('Error', `Failed to send to Kroger: ${e.message}`);
+      }
     } finally {
       setSending(false);
       setSendProgress('');

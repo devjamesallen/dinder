@@ -67,10 +67,26 @@ const TO_OZ = {
 };
 
 /**
+ * Clean up raw ingredient name from Spoonacular artifacts
+ * (stray parentheses, "or" fragments, HTML remnants, etc.)
+ */
+function cleanRawName(name) {
+  return name
+    .replace(/<[^>]*>/g, '')                   // strip any HTML tags
+    .replace(/\(.*?\)/g, '')                   // remove complete parentheticals "(or sub)"
+    .replace(/[()]/g, '')                      // strip any remaining stray parens
+    .replace(/\b(and\/or|or)\b\s*/gi, '')      // remove stray "or" / "and/or"
+    .replace(/[,;]+$/, '')                     // trailing commas / semicolons
+    .replace(/[^a-zA-Z0-9\s'-]/g, '')         // strip leftover punctuation
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Normalize an ingredient name for matching purposes
  */
 function normalizeIngredientName(name) {
-  return name
+  return cleanRawName(name)
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ')
@@ -197,7 +213,7 @@ export function mergeIngredients(recipes) {
         merged.set(normName, {
           id: `${normName}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           name: normName,
-          displayName: capitalize(ing.nameClean || ing.name),
+          displayName: capitalize(cleanRawName(ing.nameClean || ing.name)),
           amount: ing.amount,
           unit: normUnit,
           aisle: ing.aisle || 'Other',
@@ -257,4 +273,25 @@ function formatAmount(num) {
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Clean a grocery item name into a simple search term for Kroger.
+ * Strips quantities, units, and cosmetic modifiers — but KEEPS
+ * product-defining words like "ground", "diced", "shredded", "frozen", "canned"
+ * because those change what you actually buy.
+ */
+export function toSearchTerm(displayName) {
+  const UNITS_RE = /\b(tsp|tbsp|tablespoons?|teaspoons?|cups?|fl oz|pints?|quarts?|gallons?|ml|milliliters?|liters?|oz|ounces?|lbs?|pounds?|grams?|kg|kilograms?|pieces?|cloves?|slices?|cans?|bunch(?:es)?|heads?|stalks?|sprigs?|pinch(?:es)?|dash(?:es)?|small|medium|large|servings?|handfull?s?|rind)\b/gi;
+
+  // ONLY strip cosmetic/prep modifiers that don't change the product you'd buy.
+  // Keep "ground", "diced", "shredded", "frozen", "canned", etc.
+  const LIGHT_MODIFIERS_RE = /\b(fresh|organic|raw|extra-virgin|virgin|unsalted|salted|low-sodium|reduced-fat|light|to taste|for garnish|divided|optional|roasted|sauteed|toasted|braised|grilled|baked|fried|steamed|blanched|marinated|smoked|stuffed|caramelized|pickled|poached|seared|stewed)\b/gi;
+
+  return cleanRawName(displayName)
+    .replace(UNITS_RE, '')
+    .replace(LIGHT_MODIFIERS_RE, '')
+    .replace(/[\d¼½¾⅓⅔]+/g, '')   // strip numbers & fraction chars
+    .replace(/\s+/g, ' ')
+    .trim();
 }

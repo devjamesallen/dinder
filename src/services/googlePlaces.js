@@ -1,12 +1,46 @@
 import { GOOGLE_PLACES_API_KEY, GOOGLE_PLACES_BASE_URL } from '../config';
 
+// ============================================================
+// Places API (New) — POST-based with field masks
+// ============================================================
+
+/**
+ * Field mask — only request the fields we actually use.
+ * Keeps responses fast and minimises billing.
+ */
+const FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.shortFormattedAddress',
+  'places.rating',
+  'places.userRatingCount',
+  'places.priceLevel',
+  'places.primaryType',
+  'places.types',
+  'places.photos',
+  'places.currentOpeningHours',
+  'places.location',
+].join(',');
+
+/**
+ * Map the new API's string-based priceLevel → numeric 0-4
+ */
+const PRICE_MAP = {
+  PRICE_LEVEL_FREE: 0,
+  PRICE_LEVEL_INEXPENSIVE: 1,
+  PRICE_LEVEL_MODERATE: 2,
+  PRICE_LEVEL_EXPENSIVE: 3,
+  PRICE_LEVEL_VERY_EXPENSIVE: 4,
+};
+
 /**
  * Google types that mean "not a food place" — filter these out
  */
 const NON_FOOD_TYPES = new Set([
   'gas_station', 'car_wash', 'car_repair', 'car_dealer',
   'convenience_store', 'drugstore', 'pharmacy',
-  'lodging', 'hotel', 'motel',
+  'lodging', 'hotel', 'motel', 'extended_stay_hotel',
   'hospital', 'doctor', 'dentist', 'veterinary_care',
   'bank', 'atm', 'insurance_agency',
   'laundry', 'dry_cleaning', 'storage',
@@ -20,46 +54,87 @@ const NON_FOOD_TYPES = new Set([
   'movie_theater', 'bowling_alley', 'amusement_park',
 ]);
 
+const FOOD_TYPES = new Set([
+  'restaurant', 'food', 'bakery', 'cafe', 'bar',
+  'meal_takeaway', 'meal_delivery',
+  // New API granular restaurant types
+  'american_restaurant', 'chinese_restaurant', 'italian_restaurant',
+  'japanese_restaurant', 'mexican_restaurant', 'thai_restaurant',
+  'indian_restaurant', 'french_restaurant', 'korean_restaurant',
+  'vietnamese_restaurant', 'mediterranean_restaurant', 'greek_restaurant',
+  'pizza_restaurant', 'seafood_restaurant', 'steak_house',
+  'sushi_restaurant', 'barbecue_restaurant', 'breakfast_restaurant',
+  'brunch_restaurant', 'hamburger_restaurant', 'ice_cream_shop',
+  'coffee_shop', 'tea_house', 'sandwich_shop', 'ramen_restaurant',
+]);
+
 /**
  * Check if a place is primarily a non-food business
  */
 function isNonFoodPlace(types) {
-  if (!types) return false;
-  // If gas_station, lodging, etc. is present AND restaurant is NOT, skip it
-  const hasFood = types.some(t => ['restaurant', 'food', 'bakery', 'cafe'].includes(t));
+  if (!types || types.length === 0) return false;
+  const hasFood = types.some(t => FOOD_TYPES.has(t));
   const hasNonFood = types.some(t => NON_FOOD_TYPES.has(t));
   return hasNonFood && !hasFood;
 }
 
+// ============================================================
+// Nearby Search (New)
+// ============================================================
+
 /**
- * Fetch a single page of nearby places for a given type
+ * Fetch nearby places for a given includedType using Places API (New).
+ * POST  https://places.googleapis.com/v1/places:searchNearby
  */
-async function fetchNearbyPage(lat, lng, radiusMeters, type) {
-  const url = `${GOOGLE_PLACES_BASE_URL}/nearbysearch/json?` +
-    `location=${lat},${lng}` +
-    `&radius=${radiusMeters}` +
-    `&type=${type}` +
-    `&key=${GOOGLE_PLACES_API_KEY}`;
+async function fetchNearby(lat, lng, radiusMeters, includedType) {
+  const url = `${GOOGLE_PLACES_BASE_URL}/places:searchNearby`;
 
-  const response = await fetch(url);
-  if (!response.ok) return [];
+  const body = {
+    includedTypes: [includedType],
+    locationRestriction: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: radiusMeters,
+      },
+    },
+    maxResultCount: 20,
+  };
 
-  const data = await response.json();
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') return [];
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+        'X-Goog-FieldMask': FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
 
-  return (data.results || [])
-    .filter(place => !isNonFoodPlace(place.types))
-    .map(place => formatPlace(place, lat, lng));
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.log(`Places API error for ${includedType}:`, response.status, errBody);
+      return [];
+    }
+
+    const data = await response.json();
+    return (data.places || [])
+      .filter(place => !isNonFoodPlace(place.types))
+      .map(place => formatPlace(place, lat, lng));
+  } catch (err) {
+    console.log(`Fetch error for ${includedType}:`, err);
+    return [];
+  }
 }
 
 /**
  * Search nearby with multiple food types in parallel.
- * All requests fire at once so total time ≈ 1 single request (~1s).
+ * Each type returns up to 20 results — after dedup we typically get 40-60.
  */
 export async function searchAllNearbyRestaurants(lat, lng, radiusMeters = 8000) {
   const types = ['restaurant', 'cafe', 'bar', 'meal_takeaway'];
   const pages = await Promise.all(
-    types.map(type => fetchNearbyPage(lat, lng, radiusMeters, type))
+    types.map(type => fetchNearby(lat, lng, radiusMeters, type))
   );
 
   // Merge all results
@@ -82,45 +157,55 @@ export async function searchAllNearbyRestaurants(lat, lng, radiusMeters = 8000) 
   return unique;
 }
 
+// ============================================================
+// Photo URL
+// ============================================================
+
 /**
- * Build a photo URL from a Google Places photo reference
+ * Build a photo URL from a Places API (New) photo resource name.
+ * Photo name looks like: "places/ChIJ.../photos/Aaw_..."
  */
-function getPhotoUrl(photoReference, maxWidth = 400) {
-  if (!photoReference) return null;
-  return `${GOOGLE_PLACES_BASE_URL}/photo?maxwidth=${maxWidth}&photo_reference=${photoReference}&key=${GOOGLE_PLACES_API_KEY}`;
+function getPhotoUrl(photoName, maxHeight = 600) {
+  if (!photoName) return null;
+  return `${GOOGLE_PLACES_BASE_URL}/${photoName}/media?maxHeightPx=${maxHeight}&key=${GOOGLE_PLACES_API_KEY}`;
 }
 
 // ============================================================
-// Helpers
+// Format + Cuisine Detection
 // ============================================================
 
 function formatPlace(place, userLat, userLng) {
-  const photoRef = place.photos?.[0]?.photo_reference;
+  const photoName = place.photos?.[0]?.name;
+
+  const lat = place.location?.latitude;
+  const lng = place.location?.longitude;
 
   return {
-    placeId: place.place_id,
-    name: place.name,
+    placeId: place.id,
+    name: place.displayName?.text || '',
     rating: place.rating || 0,
-    totalRatings: place.user_ratings_total || 0,
-    priceLevel: place.price_level,
-    address: place.vicinity || place.formatted_address || '',
-    isOpenNow: place.opening_hours?.open_now,
-    photo: photoRef ? getPhotoUrl(photoRef, 600) : null,
-    cuisines: extractCuisines(place.types, place.name),
-    location: {
-      lat: place.geometry?.location?.lat,
-      lng: place.geometry?.location?.lng,
-    },
-    distance: (userLat && userLng)
-      ? calculateDistance(userLat, userLng, place.geometry?.location?.lat, place.geometry?.location?.lng)
+    totalRatings: place.userRatingCount || 0,
+    priceLevel: PRICE_MAP[place.priceLevel] ?? undefined,
+    address: place.shortFormattedAddress || place.formattedAddress || '',
+    isOpenNow: place.currentOpeningHours?.openNow,
+    photo: photoName ? getPhotoUrl(photoName) : null,
+    cuisines: extractCuisines(place.types, place.primaryType, place.displayName?.text),
+    location: { lat, lng },
+    distance: (userLat && userLng && lat && lng)
+      ? calculateDistance(userLat, userLng, lat, lng)
       : null,
   };
 }
 
 /**
- * Extract human-readable cuisine types from Google Places types array + restaurant name
+ * Extract human-readable cuisine types.
+ *
+ * The new API gives us `primaryType` (e.g. "chinese_restaurant") which is
+ * far more accurate than the old generic "restaurant" type.
+ * We check primaryType first, then all types, then fall back to name keywords.
  */
-function extractCuisines(types, name) {
+function extractCuisines(types, primaryType, name) {
+  // Map from Google type → display label
   const cuisineTypes = {
     'american_restaurant': 'American',
     'chinese_restaurant': 'Chinese',
@@ -139,6 +224,14 @@ function extractCuisines(types, name) {
     'steak_house': 'Steakhouse',
     'sushi_restaurant': 'Sushi',
     'barbecue_restaurant': 'BBQ',
+    'breakfast_restaurant': 'Breakfast',
+    'brunch_restaurant': 'Brunch',
+    'hamburger_restaurant': 'Burgers',
+    'ramen_restaurant': 'Ramen',
+    'sandwich_shop': 'Sandwiches',
+    'ice_cream_shop': 'Desserts',
+    'coffee_shop': 'Cafe',
+    'tea_house': 'Tea',
     'cafe': 'Café',
     'bakery': 'Bakery',
     'bar': 'Bar',
@@ -150,20 +243,30 @@ function extractCuisines(types, name) {
   const genericTypes = new Set(['Delivery', 'Takeout', 'Bar', 'Bakery', 'Café']);
   const found = [];
 
-  // Check Google types first
+  // 1. Check primaryType first — most accurate signal
+  if (primaryType && cuisineTypes[primaryType]) {
+    const label = cuisineTypes[primaryType];
+    if (!genericTypes.has(label)) {
+      found.push(label);
+    }
+  }
+
+  // 2. Check all types for additional cuisine tags
   if (types) {
     types.forEach(t => {
-      if (cuisineTypes[t] && !genericTypes.has(cuisineTypes[t])) {
-        found.push(cuisineTypes[t]);
+      if (cuisineTypes[t]) {
+        const label = cuisineTypes[t];
+        if (!genericTypes.has(label) && !found.includes(label)) {
+          found.push(label);
+        }
       }
     });
   }
 
-  // Also try name-based detection — it often gives better, more specific results
+  // 3. Name-based detection — fills gaps when Google types are generic
   if (found.length < 2 && name) {
     const lower = name.toLowerCase();
 
-    // Specific cuisine keywords — order matters: specific cuisines FIRST, generic words LAST
     const nameHints = [
       // Cuisine-specific keywords (high priority)
       ['italian', 'Italian'], ['pasta', 'Italian'], ['trattoria', 'Italian'],
@@ -228,7 +331,7 @@ function extractCuisines(types, name) {
       ['jersey mike', 'Sandwiches'], ['firehouse sub', 'Sandwiches'],
       ['krispy kreme', 'Bakery'], ['tim horton', 'Cafe'], ['dunkin', 'Cafe'],
 
-      // Generic venue types (lowest priority — only match if nothing else did)
+      // Generic venue types (lowest priority)
       ['grille', 'Grill'], ['grill', 'Grill'],
     ];
 
@@ -242,9 +345,12 @@ function extractCuisines(types, name) {
     }
   }
 
-  // Don't show generic "Restaurant" — return empty if nothing specific found
   return found;
 }
+
+// ============================================================
+// Utilities
+// ============================================================
 
 /**
  * Calculate distance between two coordinates in miles (Haversine formula)

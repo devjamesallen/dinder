@@ -10,6 +10,8 @@ import {
   FlatList,
   ScrollView,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -17,7 +19,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { logOut, updateUserProfile } from '../services/firebase';
-import { breakPairing } from '../services/pairing';
 import {
   exchangeCodeForTokens,
   searchLocations,
@@ -106,25 +107,8 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
-  const handleUnpair = () => {
-    Alert.alert('Unpair', 'Disconnect from your partner?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unpair',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await breakPairing(state.firebaseUser.uid, state.userProfile.partnerUID);
-            dispatch({
-              type: 'SET_USER_PROFILE',
-              payload: { ...state.userProfile, partnerUID: null },
-            });
-          } catch (e) {
-            Alert.alert('Error', e.message);
-          }
-        },
-      },
-    ]);
+  const handleManageGroups = () => {
+    navigation.navigate('Groups');
   };
 
   const handleLogout = () => {
@@ -160,7 +144,16 @@ export default function SettingsScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Account Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -170,20 +163,13 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.infoText}>
           {state.userProfile?.displayName} ({state.firebaseUser?.email})
         </Text>
-        {state.userProfile?.partnerUID ? (
-          <TouchableOpacity style={styles.unpairButton} onPress={handleUnpair}>
-            <Ionicons name="people-outline" size={16} color={colors.error} />
-            <Text style={styles.unpairText}>Unpair from partner</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.pairButton}
-            onPress={() => navigation.navigate('Invite')}
-          >
-            <Ionicons name="people-outline" size={16} color={colors.accent} />
-            <Text style={styles.pairText}>Pair with partner</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.pairButton}
+          onPress={handleManageGroups}
+        >
+          <Ionicons name="people-outline" size={16} color={colors.accent} />
+          <Text style={styles.pairText}>Manage Groups</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Location Radius */}
@@ -308,6 +294,7 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.logoutText}>Log Out</Text>
       </TouchableOpacity>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

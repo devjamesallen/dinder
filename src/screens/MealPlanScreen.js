@@ -18,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { mergeIngredients } from '../utils/ingredientMerger';
 import { fetchRecipeDetails } from '../services/spoonacular';
+import { suggestRecipeToGroup } from '../services/groups';
 
 const { width } = Dimensions.get('window');
 const CARD_IMAGE_HEIGHT = 200;
@@ -48,6 +49,12 @@ export default function MealPlanScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('ingredients');
   const [instructions, setInstructions] = useState(null);
   const [loadingInstructions, setLoadingInstructions] = useState(false);
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [recipeToSend, setRecipeToSend] = useState(null);
+
+  const userId = state.firebaseUser?.uid;
+  const displayName = state.userProfile?.displayName || 'Someone';
+  const groups = state.groups || [];
 
   // Fetch instructions when a recipe is opened
   useEffect(() => {
@@ -111,6 +118,32 @@ export default function MealPlanScreen({ navigation }) {
     );
   };
 
+  const handleSendToGroup = (recipe) => {
+    if (groups.length === 0) {
+      Alert.alert('No Groups', 'Create or join a group first to share recipes!');
+      return;
+    }
+    if (groups.length === 1) {
+      // Only one group — send directly
+      sendRecipeToGroup(groups[0], recipe);
+    } else {
+      // Multiple groups — show picker
+      setRecipeToSend(recipe);
+      setShowGroupPicker(true);
+    }
+  };
+
+  const sendRecipeToGroup = async (group, recipe) => {
+    try {
+      await suggestRecipeToGroup(group.id, recipe, userId, displayName);
+      Alert.alert('Sent!', `"${recipe.title}" has been suggested to ${group.name}`);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to send recipe to group');
+    }
+    setShowGroupPicker(false);
+    setRecipeToSend(null);
+  };
+
   const renderRecipeCard = ({ item }) => {
     const tags = getRecipeTags(item);
     return (
@@ -141,6 +174,16 @@ export default function MealPlanScreen({ navigation }) {
         >
           <Ionicons name="close-circle" size={28} color="rgba(239,68,68,0.9)" />
         </TouchableOpacity>
+
+        {/* Send to group button */}
+        {groups.length > 0 && (
+          <TouchableOpacity
+            style={styles.sendToGroupButton}
+            onPress={() => handleSendToGroup(item)}
+          >
+            <Ionicons name="paper-plane" size={16} color={colors.background} />
+          </TouchableOpacity>
+        )}
 
         {/* Gradient fade overlay */}
         <LinearGradient
@@ -231,6 +274,37 @@ export default function MealPlanScreen({ navigation }) {
           </TouchableOpacity>
         </>
       )}
+
+      {/* Group Picker Modal */}
+      <Modal visible={showGroupPicker} transparent animationType="fade">
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerSheet}>
+            <Text style={styles.pickerTitle}>Send to Group</Text>
+            <Text style={styles.pickerSubtitle}>
+              {recipeToSend?.title}
+            </Text>
+            {groups.map(g => (
+              <TouchableOpacity
+                key={g.id}
+                style={styles.pickerRow}
+                onPress={() => sendRecipeToGroup(g, recipeToSend)}
+              >
+                <Ionicons name="people" size={18} color={colors.accent} />
+                <Text style={styles.pickerGroupName}>{g.name}</Text>
+                <Text style={styles.pickerMemberCount}>
+                  {g.members?.length || 0} members
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.pickerCancel}
+              onPress={() => { setShowGroupPicker(false); setRecipeToSend(null); }}
+            >
+              <Text style={styles.pickerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Recipe Detail Modal */}
       <Modal
@@ -460,6 +534,19 @@ function createStyles(colors) {
       right: 10,
       zIndex: 10,
     },
+    // Send to group button
+    sendToGroupButton: {
+      position: 'absolute',
+      top: 12,
+      right: 44,
+      zIndex: 10,
+      backgroundColor: colors.accent,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
     // Gradient overlay
     gradient: {
@@ -514,6 +601,39 @@ function createStyles(colors) {
       borderRadius: 30, gap: 10,
     },
     generateText: { color: colors.background, fontSize: 18, fontWeight: 'bold' },
+
+    // Group Picker
+    pickerOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center', alignItems: 'center', padding: 30,
+    },
+    pickerSheet: {
+      backgroundColor: colors.background, borderRadius: 20, padding: 24,
+      width: '100%',
+    },
+    pickerTitle: {
+      fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 4,
+    },
+    pickerSubtitle: {
+      fontSize: 14, color: colors.textSecondary, marginBottom: 16,
+    },
+    pickerRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    pickerGroupName: {
+      flex: 1, fontSize: 16, fontWeight: '600', color: colors.text,
+    },
+    pickerMemberCount: {
+      fontSize: 13, color: colors.textTertiary,
+    },
+    pickerCancel: {
+      alignItems: 'center', paddingVertical: 14, marginTop: 8,
+    },
+    pickerCancelText: {
+      fontSize: 15, color: colors.textSecondary,
+    },
 
     // Modal styles
     modalContainer: { flex: 1, backgroundColor: colors.background },

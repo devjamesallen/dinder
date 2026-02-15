@@ -109,6 +109,61 @@ export async function searchRecipes(query, count = RECIPES_PER_BATCH) {
   }));
 }
 
+/**
+ * Fetch filtered recipes for a group shared deck.
+ * Applies cuisine, diet, and max cook time filters.
+ *
+ * @param {Object} filters — { cuisine, diet, maxTime }
+ * @param {number} count — number of recipes to fetch
+ */
+export async function fetchFilteredRecipes(filters = {}, count = 20) {
+  const params = new URLSearchParams({
+    apiKey: SPOONACULAR_API_KEY,
+    number: count.toString(),
+    addRecipeInformation: 'true',
+    fillIngredients: 'true',
+    instructionsRequired: 'true',
+    sort: 'random',
+    type: 'main course',
+  });
+
+  if (filters.cuisine) params.set('cuisine', filters.cuisine);
+  if (filters.diet) params.set('diet', filters.diet);
+  if (filters.maxTime) params.set('maxReadyTime', filters.maxTime.toString());
+
+  const url = `${SPOONACULAR_BASE_URL}/recipes/complexSearch?${params.toString()}`;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Spoonacular API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  return (data.results || []).map(recipe => ({
+    id: recipe.id,
+    title: recipe.title,
+    image: recipe.image,
+    summary: stripHtml(recipe.summary || '').slice(0, 350) + '...',
+    readyInMinutes: recipe.readyInMinutes,
+    servings: recipe.servings,
+    healthScore: recipe.healthScore || 0,
+    cuisines: recipe.cuisines || [],
+    dishTypes: recipe.dishTypes || [],
+    diets: recipe.diets || [],
+    ingredients: (recipe.extendedIngredients || []).map(ing => ({
+      id: ing.id,
+      name: ing.name,
+      nameClean: ing.nameClean || ing.name,
+      amount: ing.amount,
+      unit: ing.unit,
+      original: ing.original,
+      aisle: ing.aisle,
+    })),
+    sourceUrl: recipe.sourceUrl,
+  }));
+}
+
 /** Strip HTML tags from a string */
 function stripHtml(html) {
   if (!html) return '';

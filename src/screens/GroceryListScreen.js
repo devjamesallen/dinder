@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
   SectionList,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -87,17 +87,35 @@ function pickBest(products, searchTerm) {
 
 export default function GroceryListScreen({ navigation }) {
   const { state, dispatch } = useApp();
-  const { colors, isDarkMode, dispatch: themeDispatch } = useTheme();
+  const { colors } = useTheme();
   const styles = createStyles(colors);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState('');
+  const [selectedRecipe, setSelectedRecipe] = useState('All');
 
   const groceryList = state.groceryList || [];
 
-  // Group items by aisle for section list
-  const sections = React.useMemo(() => {
-    const aisleMap = {};
+  // Extract unique recipe names for filter chips
+  const recipeNames = useMemo(() => {
+    const names = new Set();
     groceryList.forEach(item => {
+      (item.recipes || []).forEach(r => names.add(r));
+    });
+    return ['All', ...Array.from(names).sort()];
+  }, [groceryList]);
+
+  // Filter grocery list by selected recipe
+  const filteredList = useMemo(() => {
+    if (selectedRecipe === 'All') return groceryList;
+    return groceryList.filter(item =>
+      (item.recipes || []).includes(selectedRecipe)
+    );
+  }, [groceryList, selectedRecipe]);
+
+  // Group items by aisle for section list
+  const sections = useMemo(() => {
+    const aisleMap = {};
+    filteredList.forEach(item => {
       const aisle = item.aisle || 'Other';
       if (!aisleMap[aisle]) aisleMap[aisle] = [];
       aisleMap[aisle].push(item);
@@ -105,7 +123,7 @@ export default function GroceryListScreen({ navigation }) {
     return Object.entries(aisleMap)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([title, data]) => ({ title, data }));
-  }, [groceryList]);
+  }, [filteredList]);
 
   const toggleItem = (itemId) => {
     dispatch({ type: 'TOGGLE_GROCERY_ITEM', payload: itemId });
@@ -115,8 +133,8 @@ export default function GroceryListScreen({ navigation }) {
     dispatch({ type: 'REMOVE_GROCERY_ITEM', payload: itemId });
   };
 
-  const uncheckedCount = groceryList.filter(i => !i.checked).length;
-  const totalCount = groceryList.length;
+  const uncheckedCount = filteredList.filter(i => !i.checked).length;
+  const totalCount = filteredList.length;
 
   const handleSendToKroger = async () => {
     if (!state.isKrogerConnected) {
@@ -134,7 +152,7 @@ export default function GroceryListScreen({ navigation }) {
       return;
     }
 
-    const itemsToSend = groceryList.filter(i => !i.checked);
+    const itemsToSend = filteredList.filter(i => !i.checked);
     if (itemsToSend.length === 0) {
       Alert.alert('All Done!', 'All items are checked off already.');
       return;
@@ -298,6 +316,43 @@ export default function GroceryListScreen({ navigation }) {
         </Text>
       </View>
 
+      {/* Recipe filter chips */}
+      {recipeNames.length > 2 && (
+        <View style={styles.filterContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}
+          >
+            {recipeNames.map(name => {
+              const isActive = selectedRecipe === name;
+              return (
+                <TouchableOpacity
+                  key={name}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
+                  onPress={() => setSelectedRecipe(name)}
+                >
+                  {name === 'All' && (
+                    <Ionicons
+                      name="list-outline"
+                      size={14}
+                      color={isActive ? '#fff' : colors.textSecondary}
+                      style={{ marginRight: 4 }}
+                    />
+                  )}
+                  <Text
+                    style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
@@ -429,6 +484,38 @@ function createStyles(colors) {
       color: colors.textSecondary,
       fontSize: 13,
       marginTop: 6,
+    },
+    filterContainer: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    filterScroll: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      gap: 8,
+    },
+    filterChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 20,
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    filterChipActive: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    filterChipText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      maxWidth: 150,
+    },
+    filterChipTextActive: {
+      color: '#fff',
     },
     sectionHeader: {
       flexDirection: 'row',

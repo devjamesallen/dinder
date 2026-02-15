@@ -3,23 +3,37 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Linking from 'expo-linking';
 
 import { AppProvider, useApp } from './src/context/AppContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { onAuthChange, getUserProfile } from './src/services/firebase';
+import { listenToMyGroups } from './src/services/groups';
 
 // Screens
 import AuthScreen from './src/screens/AuthScreen';
 import LandingScreen from './src/screens/LandingScreen';
-import InviteScreen from './src/screens/InviteScreen';
+import GroupsScreen from './src/screens/GroupsScreen';
+import JoinGroupScreen from './src/screens/JoinGroupScreen';
 import EatOutScreen from './src/screens/EatOutScreen';
 import MatchesScreen from './src/screens/MatchesScreen';
 import SwipeScreen from './src/screens/SwipeScreen';
 import MealPlanScreen from './src/screens/MealPlanScreen';
+import RecipeMatchesScreen from './src/screens/RecipeMatchesScreen';
 import GroceryListScreen from './src/screens/GroceryListScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
+
+// Deep linking configuration
+const linking = {
+  prefixes: [Linking.createURL('/'), 'dinder://'],
+  config: {
+    screens: {
+      JoinGroup: 'join/:inviteCode',
+    },
+  },
+};
 
 function AppNavigator() {
   const { state, dispatch } = useApp();
@@ -51,6 +65,25 @@ function AppNavigator() {
     return () => unsubscribe();
   }, []);
 
+  // Load active group and listen for group changes
+  useEffect(() => {
+    const uid = state.firebaseUser?.uid;
+
+    if (!uid) {
+      dispatch({ type: 'SET_GROUPS', payload: [] });
+      return;
+    }
+
+    // Listen for all groups the user belongs to
+    const unsubGroups = listenToMyGroups(uid, (groups) => {
+      dispatch({ type: 'SET_GROUPS', payload: groups });
+    });
+
+    // Active group syncing is handled by listenToGroup in AppContext
+
+    return () => unsubGroups();
+  }, [state.firebaseUser?.uid]);
+
   const screenOptions = {
     headerStyle: { backgroundColor: colors.background, shadowColor: 'transparent', elevation: 0 },
     headerTintColor: colors.text,
@@ -72,7 +105,7 @@ function AppNavigator() {
   const isLoggedIn = !!state.firebaseUser;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Stack.Navigator screenOptions={screenOptions}>
         {!isLoggedIn ? (
@@ -89,9 +122,14 @@ function AppNavigator() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
-              name="Invite"
-              component={InviteScreen}
-              options={{ title: 'Pair Up' }}
+              name="Groups"
+              component={GroupsScreen}
+              options={{ title: 'My Groups' }}
+            />
+            <Stack.Screen
+              name="JoinGroup"
+              component={JoinGroupScreen}
+              options={{ title: 'Join Group' }}
             />
             <Stack.Screen
               name="EatOut"
@@ -112,6 +150,11 @@ function AppNavigator() {
               name="MealPlan"
               component={MealPlanScreen}
               options={{ title: 'Meal Plan' }}
+            />
+            <Stack.Screen
+              name="RecipeMatches"
+              component={RecipeMatchesScreen}
+              options={{ title: 'Group Meal Plan' }}
             />
             <Stack.Screen
               name="GroceryList"

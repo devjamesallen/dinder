@@ -25,27 +25,27 @@ const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
 
 export default function MatchesScreen({ navigation }) {
   const { state } = useApp();
-  const { colors, isDarkMode, dispatch: themeDispatch } = useTheme();
+  const { colors } = useTheme();
   const styles = createStyles(colors);
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const userId = state.firebaseUser?.uid;
-  const partnerId = state.userProfile?.partnerUID;
+  const activeGroupId = state.userProfile?.activeGroupId || null;
 
   useEffect(() => {
-    if (!userId || !partnerId) {
+    if (!userId || !activeGroupId) {
       setLoading(false);
       return;
     }
 
-    const unsubscribe = listenToMatches(userId, partnerId, (newMatches) => {
+    const unsubscribe = listenToMatches(activeGroupId, (newMatches) => {
       setMatches(newMatches);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [userId, partnerId]);
+  }, [userId, activeGroupId]);
 
   const handleOpenMaps = (restaurant) => {
     const query = encodeURIComponent(restaurant.restaurantName + ' ' + (restaurant.restaurantAddress || ''));
@@ -70,24 +70,29 @@ export default function MatchesScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.centered}>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+        />
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
-  if (!partnerId) {
+  if (!activeGroupId) {
     return (
       <View style={styles.centered}>
         <Ionicons name="people-outline" size={64} color={colors.textTertiary} />
-        <Text style={styles.emptyTitle}>No partner yet</Text>
+        <Text style={styles.emptyTitle}>No active group</Text>
         <Text style={styles.emptySubtitle}>
-          Pair up with your partner to start matching on restaurants!
+          Create or join a group to start matching on restaurants!
         </Text>
         <TouchableOpacity
           style={styles.pairButton}
-          onPress={() => navigation.navigate('Invite')}
+          onPress={() => navigation.navigate('Groups')}
         >
-          <Text style={styles.pairButtonText}>Pair Up</Text>
+          <Text style={styles.pairButtonText}>My Groups</Text>
         </TouchableOpacity>
       </View>
     );
@@ -218,6 +223,7 @@ function createStyles(colors) {
       backgroundColor: colors.background,
       padding: 30,
     },
+    loadingLogo: { width: 160, height: 160, marginBottom: 20, opacity: 0.85 },
     emptyTitle: {
       color: colors.text, fontSize: 22, fontWeight: 'bold', marginTop: 16,
     },

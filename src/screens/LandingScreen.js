@@ -7,12 +7,13 @@ import {
   Image,
   SafeAreaView,
   StatusBar,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 
-const FEATURES = [
+const BASE_FEATURES = [
   {
     key: "EatOut",
     title: "Eat Out",
@@ -30,7 +31,7 @@ const FEATURES = [
   {
     key: "MealPlan",
     title: "Meal Plan",
-    subtitle: "Grocery list & Kroger Clicklist",
+    subtitle: "Your personal recipes & grocery list",
     icon: "cart-outline",
     screen: "MealPlan",
   },
@@ -40,8 +41,24 @@ export default function LandingScreen({ navigation }) {
   const { state } = useApp();
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const hasPartner = !!state.userProfile?.partnerUID;
+  const activeGroupId = state.userProfile?.activeGroupId || null;
+  const activeGroup = state.activeGroup || null;
+  const hasGroup = !!activeGroupId;
   const displayName = state.userProfile?.displayName || "";
+
+  // Build feature list — add Group Meal Plan when group is active
+  const FEATURES = hasGroup
+    ? [
+        ...BASE_FEATURES,
+        {
+          key: "RecipeMatches",
+          title: "Group Meal Plan",
+          subtitle: "Matched recipes for your group",
+          icon: "people-outline",
+          screen: "RecipeMatches",
+        },
+      ]
+    : BASE_FEATURES;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -97,22 +114,34 @@ export default function LandingScreen({ navigation }) {
 
       {/* Bottom section */}
       <View style={styles.bottom}>
-        {hasPartner ? (
-          <TouchableOpacity
-            style={styles.matchesRow}
-            onPress={() => navigation.navigate("Matches")}
-          >
-            <Ionicons name="heart" size={16} color={colors.accent} />
-            <Text style={styles.matchesText}>View Matches</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-          </TouchableOpacity>
+        {hasGroup ? (
+          <>
+            <TouchableOpacity
+              style={styles.groupRow}
+              onPress={() => navigation.navigate("Groups")}
+            >
+              <Ionicons name="people" size={16} color={colors.accent} />
+              <Text style={styles.groupRowText}>
+                {activeGroup?.name || 'Active Group'} ({activeGroup?.members?.length || '?'})
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.matchesRow}
+              onPress={() => navigation.navigate("Matches")}
+            >
+              <Ionicons name="heart" size={16} color={colors.accent} />
+              <Text style={styles.matchesText}>View Matches</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity
             style={styles.pairRow}
-            onPress={() => navigation.navigate("Invite")}
+            onPress={() => navigation.navigate("Groups")}
           >
             <Ionicons name="people-outline" size={18} color={colors.accent} />
-            <Text style={styles.pairText}>Pair with Partner</Text>
+            <Text style={styles.pairText}>Create or Join a Group</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
@@ -126,6 +155,8 @@ function createStyles(colors) {
     container: {
       flex: 1,
       backgroundColor: colors.background,
+      paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+      paddingBottom: Platform.OS === 'android' ? 24 : 0,
     },
     topBar: {
       flexDirection: "row",
@@ -213,6 +244,22 @@ function createStyles(colors) {
       flex: 1,
       fontSize: 15,
       fontWeight: "500",
+      color: colors.accent,
+    },
+    groupRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 16,
+      gap: 10,
+      marginBottom: 10,
+    },
+    groupRowText: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: "600",
       color: colors.accent,
     },
     matchesRow: {

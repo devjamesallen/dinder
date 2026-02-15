@@ -17,11 +17,24 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { searchAllNearbyRestaurants } from '../services/googlePlaces';
 import { saveSwipe, getSwipedPlaceIds } from '../services/matching';
+import { calculateBusynessScore } from '../utils/busynessCalculator';
 
 const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT = height * 0.72;
 
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
+
+const BUSYNESS_COLORS = {
+  quiet:    '#10B981',  // green
+  moderate: '#F59E0B',  // amber
+  busy:     '#EF4444',  // red
+};
+
+const BUSYNESS_ICONS = {
+  quiet:    'hourglass-outline',
+  moderate: 'people-outline',
+  busy:     'flame-outline',
+};
 
 function StarRating({ rating, colors }) {
   const stars = [];
@@ -53,24 +66,41 @@ export default function EatOutScreen({ navigation }) {
   const swiperRef = useRef(null);
 
   const userId = state.firebaseUser?.uid;
-  const partnerId = state.userProfile?.partnerUID;
-  const radiusMiles = state.userProfile?.searchRadiusMiles || 5;
+  const activeGroupId = state.userProfile?.activeGroupId || null;
+  const activeGroup = state.activeGroup || null;
+  const hasGroup = !!activeGroupId;
+  const [soloOverride, setSoloOverride] = useState(false);
+  const isGroupMode = hasGroup && !soloOverride;
+  // Use group's radius if set (and in group mode), otherwise fall back to user's setting
+  const radiusMiles = (isGroupMode && activeGroup?.searchRadiusMiles) || state.userProfile?.searchRadiusMiles || 5;
+  // Use group's pinned location if set (and in group mode)
+  const groupLat = isGroupMode ? (activeGroup?.locationLat || null) : null;
+  const groupLng = isGroupMode ? (activeGroup?.locationLng || null) : null;
 
   const loadRestaurants = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Location permission is needed to find restaurants near you.');
-        setLoading(false);
-        return;
-      }
+      let latitude, longitude;
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = location.coords;
+      // Use group's pinned location if available, otherwise use device GPS
+      if (groupLat && groupLng) {
+        latitude = groupLat;
+        longitude = groupLng;
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setError('Location permission is needed to find restaurants near you.');
+          setLoading(false);
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        latitude = location.coords.latitude;
+        longitude = location.coords.longitude;
+      }
 
       dispatch({
         type: 'SET_USER_LOCATION',
@@ -79,13 +109,18 @@ export default function EatOutScreen({ navigation }) {
 
       const radiusMeters = Math.round(radiusMiles * 1609.34);
 
-      // Fetch swiped IDs first so we can filter immediately
+      // Fetch swiped IDs scoped to this group (with timeout to avoid hanging)
       let alreadySwiped = [];
       if (userId) {
         try {
-          alreadySwiped = await getSwipedPlaceIds(userId);
+          const swipePromise = getSwipedPlaceIds(userId, isGroupMode ? activeGroupId : null);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 5000)
+          );
+          alreadySwiped = await Promise.race([swipePromise, timeoutPromise]);
         } catch (e) {
           console.log('Could not fetch swiped IDs:', e);
+          alreadySwiped = [];
         }
       }
 
@@ -118,7 +153,7 @@ export default function EatOutScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [radiusMiles, userId]);
+  }, [radiusMiles, userId, activeGroupId, groupLat, groupLng, isGroupMode]);
 
   useEffect(() => {
     loadRestaurants();
@@ -129,7 +164,7 @@ export default function EatOutScreen({ navigation }) {
     if (!restaurant || !userId) return;
 
     try {
-      const match = await saveSwipe(userId, partnerId, restaurant.placeId, direction, {
+      const match = await saveSwipe(userId, isGroupMode ? activeGroupId : null, restaurant.placeId, direction, {
         name: restaurant.name,
         photo: restaurant.photo,
         rating: restaurant.rating,
@@ -153,6 +188,11 @@ export default function EatOutScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.centered}>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+        />
         <ActivityIndicator size="large" color={colors.accent} />
         <Text style={styles.loadingText}>Loading all restaurants near you...</Text>
       </View>
@@ -186,19 +226,33 @@ export default function EatOutScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Partner status */}
-      {partnerId ? (
-        <View style={styles.partnerBadge}>
-          <Ionicons name="heart" size={14} color={colors.success} />
-          <Text style={styles.partnerText}>Swiping together</Text>
+      {/* Mode toggle */}
+      {hasGroup ? (
+        <View style={styles.modeBanner}>
+          <TouchableOpacity
+            style={[styles.modeTab, isGroupMode && styles.modeTabActive]}
+            onPress={() => { setSoloOverride(false); loadRestaurants(); }}
+          >
+            <Ionicons name="people" size={14} color={isGroupMode ? '#fff' : colors.textSecondary} />
+            <Text style={[styles.modeTabText, isGroupMode && styles.modeTabTextActive]}>
+              {activeGroup?.name || 'Group'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeTab, !isGroupMode && styles.modeTabActive]}
+            onPress={() => { setSoloOverride(true); loadRestaurants(); }}
+          >
+            <Ionicons name="person" size={14} color={!isGroupMode ? '#fff' : colors.textSecondary} />
+            <Text style={[styles.modeTabText, !isGroupMode && styles.modeTabTextActive]}>Solo</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity
           style={styles.soloWarning}
-          onPress={() => navigation.navigate('Invite')}
+          onPress={() => navigation.navigate('Groups')}
         >
           <Ionicons name="person-outline" size={14} color={colors.accent} />
-          <Text style={styles.soloText}>Solo mode — pair up for matching!</Text>
+          <Text style={styles.soloText}>Solo mode — join a group for matching!</Text>
         </TouchableOpacity>
       )}
 
@@ -247,6 +301,28 @@ export default function EatOutScreen({ navigation }) {
                 <Text style={styles.cardName} numberOfLines={2}>
                   {restaurant.name}
                 </Text>
+
+                {/* Busyness indicator */}
+                {(() => {
+                  const { score, level } = calculateBusynessScore(restaurant);
+                  const color = BUSYNESS_COLORS[level];
+                  const icon = BUSYNESS_ICONS[level];
+                  const label = level.charAt(0).toUpperCase() + level.slice(1);
+                  return (
+                    <View style={styles.busynessContainer}>
+                      <View style={styles.busynessHeader}>
+                        <View style={styles.busynessLabelRow}>
+                          <Ionicons name={icon} size={12} color={color} />
+                          <Text style={styles.busynessLabel}>Est. Crowd</Text>
+                        </View>
+                        <Text style={[styles.busynessLevel, { color }]}>{label}</Text>
+                      </View>
+                      <View style={styles.busynessBarBg}>
+                        <View style={[styles.busynessBarFill, { width: `${score}%`, backgroundColor: color }]} />
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {/* Cuisine tags — only show if we have specific ones */}
                 {restaurant.cuisines.length > 0 && (
@@ -435,6 +511,7 @@ function createStyles(colors) {
       backgroundColor: colors.background,
       padding: 30,
     },
+    loadingLogo: { width: 160, height: 160, marginBottom: 20, opacity: 0.85 },
     loadingText: { color: colors.textSecondary, fontSize: 16, marginTop: 16 },
     errorText: { color: colors.error, fontSize: 16, marginTop: 16, textAlign: 'center' },
     emptyText: { color: colors.text, fontSize: 18, marginTop: 16 },
@@ -445,12 +522,35 @@ function createStyles(colors) {
     },
     retryText: { color: colors.background, fontSize: 16, fontWeight: '600' },
 
-    // Partner badges
-    partnerBadge: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      gap: 6, paddingVertical: 8, backgroundColor: colors.inputBg,
+    // Mode toggle
+    modeBanner: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginVertical: 6,
+      backgroundColor: colors.inputBg,
+      borderRadius: 12,
+      padding: 3,
     },
-    partnerText: { color: colors.success, fontSize: 13, fontWeight: '600' },
+    modeTab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    modeTabActive: {
+      backgroundColor: colors.accent,
+    },
+    modeTabText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    modeTabTextActive: {
+      color: '#fff',
+    },
     soloWarning: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 6, paddingVertical: 8, backgroundColor: colors.paleAccent,
@@ -517,6 +617,42 @@ function createStyles(colors) {
       color: colors.text,
       letterSpacing: -0.3,
     },
+    // Busyness indicator
+    busynessContainer: {
+      marginTop: 2,
+      marginBottom: 2,
+    },
+    busynessHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 3,
+    },
+    busynessLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    busynessLabel: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    busynessLevel: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    busynessBarBg: {
+      height: 5,
+      backgroundColor: 'rgba(255,255,255,0.15)',
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    busynessBarFill: {
+      height: '100%',
+      borderRadius: 3,
+    },
+
     cuisineRow: {
       flexDirection: 'row',
       gap: 6,

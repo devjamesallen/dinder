@@ -17,24 +17,10 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { searchAllNearbyRestaurants } from '../services/googlePlaces';
 import { saveSwipe, getSwipedPlaceIds } from '../services/matching';
-import { calculateBusynessScore } from '../utils/busynessCalculator';
-
 const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT = height * 0.72;
 
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
-
-const BUSYNESS_COLORS = {
-  quiet:    '#10B981',  // green
-  moderate: '#F59E0B',  // amber
-  busy:     '#EF4444',  // red
-};
-
-const BUSYNESS_ICONS = {
-  quiet:    'hourglass-outline',
-  moderate: 'people-outline',
-  busy:     'flame-outline',
-};
 
 function StarRating({ rating, colors }) {
   const stars = [];
@@ -226,36 +212,6 @@ export default function EatOutScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Mode toggle */}
-      {hasGroup ? (
-        <View style={styles.modeBanner}>
-          <TouchableOpacity
-            style={[styles.modeTab, isGroupMode && styles.modeTabActive]}
-            onPress={() => { setSoloOverride(false); loadRestaurants(); }}
-          >
-            <Ionicons name="people" size={14} color={isGroupMode ? '#fff' : colors.textSecondary} />
-            <Text style={[styles.modeTabText, isGroupMode && styles.modeTabTextActive]}>
-              {activeGroup?.name || 'Group'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeTab, !isGroupMode && styles.modeTabActive]}
-            onPress={() => { setSoloOverride(true); loadRestaurants(); }}
-          >
-            <Ionicons name="person" size={14} color={!isGroupMode ? '#fff' : colors.textSecondary} />
-            <Text style={[styles.modeTabText, !isGroupMode && styles.modeTabTextActive]}>Solo</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={styles.soloWarning}
-          onPress={() => navigation.navigate('Groups')}
-        >
-          <Ionicons name="person-outline" size={14} color={colors.accent} />
-          <Text style={styles.soloText}>Solo mode — join a group for matching!</Text>
-        </TouchableOpacity>
-      )}
-
       <Swiper
         ref={swiperRef}
         cards={restaurants}
@@ -301,28 +257,6 @@ export default function EatOutScreen({ navigation }) {
                 <Text style={styles.cardName} numberOfLines={2}>
                   {restaurant.name}
                 </Text>
-
-                {/* Busyness indicator */}
-                {(() => {
-                  const { score, level } = calculateBusynessScore(restaurant);
-                  const color = BUSYNESS_COLORS[level];
-                  const icon = BUSYNESS_ICONS[level];
-                  const label = level.charAt(0).toUpperCase() + level.slice(1);
-                  return (
-                    <View style={styles.busynessContainer}>
-                      <View style={styles.busynessHeader}>
-                        <View style={styles.busynessLabelRow}>
-                          <Ionicons name={icon} size={12} color={color} />
-                          <Text style={styles.busynessLabel}>Est. Crowd</Text>
-                        </View>
-                        <Text style={[styles.busynessLevel, { color }]}>{label}</Text>
-                      </View>
-                      <View style={styles.busynessBarBg}>
-                        <View style={[styles.busynessBarFill, { width: `${score}%`, backgroundColor: color }]} />
-                      </View>
-                    </View>
-                  );
-                })()}
 
                 {/* Cuisine tags — only show if we have specific ones */}
                 {restaurant.cuisines.length > 0 && (
@@ -428,28 +362,51 @@ export default function EatOutScreen({ navigation }) {
         }}
       />
 
-      {/* Action buttons */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.skipButton]}
-          onPress={() => swiperRef.current?.swipeLeft()}
-        >
-          <Ionicons name="close" size={30} color={colors.error} />
-        </TouchableOpacity>
+      {/* Mode toggle pill + Action buttons */}
+      <View style={styles.bottomArea}>
+        {hasGroup && (
+          <TouchableOpacity
+            style={styles.modePill}
+            onPress={() => {
+              const goSolo = !soloOverride;
+              setSoloOverride(goSolo);
+              loadRestaurants();
+            }}
+          >
+            <Ionicons
+              name={isGroupMode ? 'people' : 'person'}
+              size={13}
+              color={colors.accent}
+            />
+            <Text style={styles.modePillText}>
+              {isGroupMode ? activeGroup?.name || 'Group' : 'Solo'}
+            </Text>
+            <Ionicons name="swap-horizontal" size={12} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.refreshButton]}
-          onPress={loadRestaurants}
-        >
-          <Ionicons name="refresh" size={22} color={colors.textTertiary} />
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.skipButton]}
+            onPress={() => swiperRef.current?.swipeLeft()}
+          >
+            <Ionicons name="close" size={30} color={colors.error} />
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.likeButton]}
-          onPress={() => swiperRef.current?.swipeRight()}
-        >
-          <Ionicons name="heart" size={30} color={colors.success} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.refreshButton]}
+            onPress={loadRestaurants}
+          >
+            <Ionicons name="refresh" size={22} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.likeButton]}
+            onPress={() => swiperRef.current?.swipeRight()}
+          >
+            <Ionicons name="heart" size={30} color={colors.success} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Match Popup */}
@@ -522,40 +479,28 @@ function createStyles(colors) {
     },
     retryText: { color: colors.background, fontSize: 16, fontWeight: '600' },
 
-    // Mode toggle
-    modeBanner: {
-      flexDirection: 'row',
-      marginHorizontal: 16,
-      marginVertical: 6,
-      backgroundColor: colors.inputBg,
-      borderRadius: 12,
-      padding: 3,
+    // Bottom area with mode pill + buttons
+    bottomArea: {
+      alignItems: 'center',
+      paddingBottom: 8,
     },
-    modeTab: {
-      flex: 1,
+    modePill: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 8,
-      borderRadius: 10,
+      gap: 5,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      marginBottom: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
-    modeTabActive: {
-      backgroundColor: colors.accent,
-    },
-    modeTabText: {
-      fontSize: 13,
+    modePillText: {
+      fontSize: 12,
       fontWeight: '600',
-      color: colors.textSecondary,
+      color: colors.accent,
     },
-    modeTabTextActive: {
-      color: '#fff',
-    },
-    soloWarning: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      gap: 6, paddingVertical: 8, backgroundColor: colors.paleAccent,
-    },
-    soloText: { color: colors.accent, fontSize: 13 },
 
     // Card — image fills entire card, info overlaid at bottom
     card: {
@@ -617,42 +562,6 @@ function createStyles(colors) {
       color: colors.text,
       letterSpacing: -0.3,
     },
-    // Busyness indicator
-    busynessContainer: {
-      marginTop: 2,
-      marginBottom: 2,
-    },
-    busynessHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 3,
-    },
-    busynessLabelRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    busynessLabel: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.textSecondary,
-    },
-    busynessLevel: {
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    busynessBarBg: {
-      height: 5,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-      borderRadius: 3,
-      overflow: 'hidden',
-    },
-    busynessBarFill: {
-      height: '100%',
-      borderRadius: 3,
-    },
-
     cuisineRow: {
       flexDirection: 'row',
       gap: 6,

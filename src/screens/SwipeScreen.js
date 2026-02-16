@@ -323,35 +323,6 @@ export default function SwipeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Mode toggle */}
-      {hasGroup ? (
-        <View style={styles.modeBanner}>
-          <TouchableOpacity
-            style={[styles.modeTab, isGroupMode && styles.modeTabActive]}
-            onPress={() => { if (!isGroupMode) { setSoloOverride(false); loadGroupDeck(); } }}
-          >
-            <Ionicons name="people" size={14} color={isGroupMode ? '#fff' : colors.textSecondary} />
-            <Text style={[styles.modeTabText, isGroupMode && styles.modeTabTextActive]}>
-              {activeGroup?.name || 'Group'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeTab, !isGroupMode && styles.modeTabActive]}
-            onPress={() => { if (isGroupMode) { setSoloOverride(true); loadSoloRecipes(); } }}
-          >
-            <Ionicons name="person" size={14} color={!isGroupMode ? '#fff' : colors.textSecondary} />
-            <Text style={[styles.modeTabText, !isGroupMode && styles.modeTabTextActive]}>Solo</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.badgeRow}>
-          <View style={styles.badge}>
-            <Ionicons name="restaurant" size={14} color={colors.accent} />
-            <Text style={styles.badgeText}>{state.mealPlan.length} meals planned</Text>
-          </View>
-        </View>
-      )}
-
       <Swiper
         ref={swiperRef}
         cards={recipes}
@@ -454,28 +425,51 @@ export default function SwipeScreen({ navigation }) {
         }}
       />
 
-      {/* Action buttons */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.skipButton]}
-          onPress={() => swiperRef.current?.swipeLeft()}
-        >
-          <Ionicons name="close" size={30} color={colors.error} />
-        </TouchableOpacity>
+      {/* Mode toggle pill + Action buttons */}
+      <View style={styles.bottomArea}>
+        {hasGroup && (
+          <TouchableOpacity
+            style={styles.modePill}
+            onPress={() => {
+              const goSolo = !soloOverride;
+              setSoloOverride(goSolo);
+              if (goSolo) { loadSoloRecipes(); } else { loadGroupDeck(); }
+            }}
+          >
+            <Ionicons
+              name={isGroupMode ? 'people' : 'person'}
+              size={13}
+              color={colors.accent}
+            />
+            <Text style={styles.modePillText}>
+              {isGroupMode ? activeGroup?.name || 'Group' : 'Solo'}
+            </Text>
+            <Ionicons name="swap-horizontal" size={12} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.refreshButton]}
-          onPress={() => isGroupMode ? loadGroupDeck() : loadSoloRecipes()}
-        >
-          <Ionicons name="refresh" size={22} color={colors.textTertiary} />
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.skipButton]}
+            onPress={() => swiperRef.current?.swipeLeft()}
+          >
+            <Ionicons name="close" size={30} color={colors.error} />
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.cookButton]}
-          onPress={() => swiperRef.current?.swipeRight()}
-        >
-          <Ionicons name="heart" size={30} color={colors.success} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.refreshButton]}
+            onPress={() => isGroupMode ? loadGroupDeck() : loadSoloRecipes()}
+          >
+            <Ionicons name="refresh" size={22} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.cookButton]}
+            onPress={() => swiperRef.current?.swipeRight()}
+          >
+            <Ionicons name="heart" size={30} color={colors.success} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Match Alert Modal */}
@@ -606,49 +600,28 @@ function createStyles(colors) {
     },
     retryText: { color: colors.background, fontSize: 16, fontWeight: '600' },
 
-    // Mode toggle
-    modeBanner: {
-      flexDirection: 'row',
-      marginHorizontal: 16,
-      marginVertical: 6,
-      backgroundColor: colors.inputBg,
-      borderRadius: 12,
-      padding: 3,
+    // Bottom area with mode pill + buttons
+    bottomArea: {
+      alignItems: 'center',
+      paddingBottom: 8,
     },
-    modeTab: {
-      flex: 1,
+    modePill: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 8,
-      borderRadius: 10,
+      gap: 5,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      marginBottom: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
-    modeTabActive: {
-      backgroundColor: colors.accent,
-    },
-    modeTabText: {
-      fontSize: 13,
+    modePillText: {
+      fontSize: 12,
       fontWeight: '600',
-      color: colors.textSecondary,
+      color: colors.accent,
     },
-    modeTabTextActive: {
-      color: '#fff',
-    },
-    // Top badge row (solo without group)
-    badgeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      backgroundColor: colors.paleAccent,
-    },
-    badge: {
-      flexDirection: 'row', alignItems: 'center',
-      gap: 6, flex: 1, justifyContent: 'center',
-    },
-    badgeText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
 
     // Card
     card: {

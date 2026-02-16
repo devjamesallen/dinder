@@ -6,16 +6,18 @@ import {
   Image,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
   Dimensions,
   Modal,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Swiper from 'react-native-deck-swiper';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
-import { fetchRandomRecipes, fetchFilteredRecipes } from '../services/spoonacular';
+import { fetchRandomRecipes, fetchFilteredRecipes, fetchRecipeDetails } from '../services/spoonacular';
 import {
   getSharedDeck,
   saveSharedDeck,
@@ -82,6 +84,24 @@ export default function SwipeScreen({ navigation }) {
   const [soloOverride, setSoloOverride] = useState(false);
   const isGroupMode = hasGroup && !soloOverride;
   const userId = state.firebaseUser?.uid;
+
+  // Detail modal state
+  const [detailRecipe, setDetailRecipe] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const handleMoreInfo = async (recipe) => {
+    setDetailRecipe(recipe); // show modal immediately with card data
+    setDetailLoading(true);
+    try {
+      const full = await fetchRecipeDetails(recipe.id);
+      setDetailRecipe(full);
+    } catch (e) {
+      console.log('Could not fetch full recipe details:', e);
+      // keep the partial card data visible
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   // Filter modal state
   const [showFilters, setShowFilters] = useState(false);
@@ -323,6 +343,7 @@ export default function SwipeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.swiperArea}>
       <Swiper
         ref={swiperRef}
         cards={recipes}
@@ -382,6 +403,13 @@ export default function SwipeScreen({ navigation }) {
                     <Text style={styles.metaValue}>{recipe.ingredients?.length || 0} ingredients</Text>
                   </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.moreInfoButton}
+                  onPress={() => handleMoreInfo(recipe)}
+                >
+                  <Ionicons name="information-circle-outline" size={16} color={colors.accent} />
+                  <Text style={styles.moreInfoText}>More Info</Text>
+                </TouchableOpacity>
               </View>
             </View>
           );
@@ -424,10 +452,11 @@ export default function SwipeScreen({ navigation }) {
           },
         }}
       />
+      </View>
 
-      {/* Mode toggle pill + Action buttons */}
-      <View style={styles.bottomArea}>
-        {hasGroup && (
+      {/* Mode toggle pill */}
+      {hasGroup && (
+        <View style={styles.bottomArea}>
           <TouchableOpacity
             style={styles.modePill}
             onPress={() => {
@@ -446,31 +475,8 @@ export default function SwipeScreen({ navigation }) {
             </Text>
             <Ionicons name="swap-horizontal" size={12} color={colors.textTertiary} />
           </TouchableOpacity>
-        )}
-
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.skipButton]}
-            onPress={() => swiperRef.current?.swipeLeft()}
-          >
-            <Ionicons name="close" size={30} color={colors.error} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.refreshButton]}
-            onPress={() => isGroupMode ? loadGroupDeck() : loadSoloRecipes()}
-          >
-            <Ionicons name="refresh" size={22} color={colors.textTertiary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.cookButton]}
-            onPress={() => swiperRef.current?.swipeRight()}
-          >
-            <Ionicons name="heart" size={30} color={colors.success} />
-          </TouchableOpacity>
         </View>
-      </View>
+      )}
 
       {/* Match Alert Modal */}
       <Modal visible={!!matchAlert} transparent animationType="fade">
@@ -505,10 +511,120 @@ export default function SwipeScreen({ navigation }) {
         </View>
       </Modal>
 
+      {/* Recipe Detail Modal */}
+      <Modal visible={!!detailRecipe} animationType="slide" transparent>
+        <View style={styles.detailOverlay}>
+          <Pressable style={styles.detailDismissZone} onPress={() => setDetailRecipe(null)} />
+          <View style={styles.detailSheet}>
+            <View style={styles.detailHeader}>
+              <Text style={styles.detailTitle} numberOfLines={2}>{detailRecipe?.title}</Text>
+              <TouchableOpacity onPress={() => setDetailRecipe(null)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.detailScroll} showsVerticalScrollIndicator={false}>
+              {detailRecipe?.image && (
+                <Image
+                  source={{ uri: detailRecipe.image }}
+                  style={styles.detailImage}
+                  resizeMode="cover"
+                />
+              )}
+
+              {/* Quick stats */}
+              <View style={styles.detailStats}>
+                <View style={styles.detailStat}>
+                  <Ionicons name="time-outline" size={18} color={colors.accent} />
+                  <Text style={styles.detailStatValue}>{detailRecipe?.readyInMinutes} min</Text>
+                  <Text style={styles.detailStatLabel}>Cook Time</Text>
+                </View>
+                <View style={styles.detailStat}>
+                  <Ionicons name="people-outline" size={18} color={colors.accent} />
+                  <Text style={styles.detailStatValue}>{detailRecipe?.servings}</Text>
+                  <Text style={styles.detailStatLabel}>Servings</Text>
+                </View>
+                {detailRecipe?.healthScore > 0 && (
+                  <View style={styles.detailStat}>
+                    <Ionicons name="leaf-outline" size={18} color={colors.success} />
+                    <Text style={styles.detailStatValue}>{detailRecipe?.healthScore}</Text>
+                    <Text style={styles.detailStatLabel}>Health</Text>
+                  </View>
+                )}
+              </View>
+
+              {detailLoading && (
+                <View style={styles.detailLoadingRow}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.detailLoadingText}>Loading full recipe...</Text>
+                </View>
+              )}
+
+              {/* Summary / About */}
+              {detailRecipe?.summary ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>About</Text>
+                  <Text style={styles.detailBody}>
+                    {detailRecipe.summary.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ')}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Ingredients */}
+              {detailRecipe?.ingredients?.length > 0 && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>
+                    Ingredients ({detailRecipe.ingredients.length})
+                  </Text>
+                  {detailRecipe.ingredients.map((ing, i) => (
+                    <View key={i} style={styles.ingredientRow}>
+                      <View style={styles.ingredientDot} />
+                      <Text style={styles.ingredientText}>
+                        {ing.original || `${ing.amount || ''} ${ing.unit || ''} ${ing.name || ''}`.trim()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Instructions */}
+              {detailRecipe?.instructions ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Instructions</Text>
+                  <Text style={styles.detailBody}>
+                    {detailRecipe.instructions.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ')}
+                  </Text>
+                </View>
+              ) : !detailLoading && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Instructions</Text>
+                  <Text style={styles.detailBody}>
+                    Tap "View Full Recipe" below to see the complete instructions.
+                  </Text>
+                </View>
+              )}
+
+              {/* Source link */}
+              {detailRecipe?.sourceUrl ? (
+                <TouchableOpacity
+                  style={styles.sourceButton}
+                  onPress={() => Linking.openURL(detailRecipe.sourceUrl)}
+                >
+                  <Ionicons name="open-outline" size={16} color={colors.accent} />
+                  <Text style={styles.sourceButtonText}>View Full Recipe</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <View style={{ height: 30 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Filter Modal (Group Mode) */}
       <Modal visible={showFilters} animationType="slide" transparent>
-        <View style={styles.filterOverlay}>
-          <View style={styles.filterSheet}>
+        <Pressable style={styles.filterOverlay} onPress={() => setShowFilters(false)}>
+          <Pressable style={styles.filterSheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.filterHeader}>
               <Text style={styles.filterTitle}>Recipe Filters</Text>
               <TouchableOpacity onPress={() => setShowFilters(false)}>
@@ -569,8 +685,8 @@ export default function SwipeScreen({ navigation }) {
             <TouchableOpacity style={styles.filterSaveButton} onPress={handleSaveFilters}>
               <Text style={styles.filterSaveText}>Apply & Generate New Deck</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -581,6 +697,9 @@ function createStyles(colors) {
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    swiperArea: {
+      flex: 1,
     },
     centered: {
       flex: 1,
@@ -600,10 +719,12 @@ function createStyles(colors) {
     },
     retryText: { color: colors.background, fontSize: 16, fontWeight: '600' },
 
-    // Bottom area with mode pill + buttons
+    // Bottom area with mode pill
     bottomArea: {
       alignItems: 'center',
-      paddingBottom: 8,
+      paddingVertical: 12,
+      zIndex: 20,
+      elevation: 20,
     },
     modePill: {
       flexDirection: 'row',
@@ -676,24 +797,82 @@ function createStyles(colors) {
     metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     metaValue: { color: colors.text, fontSize: 14, fontWeight: '600' },
 
-    // Buttons
-    buttonRow: {
-      flexDirection: 'row', justifyContent: 'center',
-      alignItems: 'center', paddingBottom: 16, gap: 24,
+    // More Info button on card
+    moreInfoButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 4,
+      backgroundColor: 'rgba(255,255,255,0.15)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.25)',
+      marginTop: 2,
     },
-    actionButton: {
-      width: 56, height: 56, borderRadius: 28,
-      justifyContent: 'center', alignItems: 'center',
-      backgroundColor: colors.background,
-      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
+    moreInfoText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.accent,
     },
-    skipButton: { borderWidth: 2, borderColor: colors.border },
-    cookButton: { borderWidth: 2, borderColor: colors.border },
-    refreshButton: {
-      borderWidth: 1, borderColor: colors.border,
-      width: 42, height: 42, borderRadius: 21,
+
+    // Recipe Detail Modal
+    detailOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     },
+    detailDismissZone: {
+      flex: 1,
+    },
+    detailSheet: {
+      backgroundColor: colors.background, borderTopLeftRadius: 24,
+      borderTopRightRadius: 24, maxHeight: height * 0.85,
+      paddingBottom: 20,
+    },
+    detailHeader: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      padding: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+    },
+    detailTitle: { fontSize: 20, fontWeight: '700', color: colors.text, flex: 1, marginRight: 12 },
+    detailScroll: { paddingHorizontal: 20 },
+    detailImage: {
+      width: '100%', height: 200, borderRadius: 16, marginTop: 16,
+    },
+    detailStats: {
+      flexDirection: 'row', justifyContent: 'space-around',
+      paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border, marginBottom: 8,
+    },
+    detailStat: { alignItems: 'center', gap: 4 },
+    detailStatValue: { fontSize: 16, fontWeight: '700', color: colors.text },
+    detailStatLabel: { fontSize: 11, color: colors.textTertiary },
+    detailLoadingRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, paddingVertical: 16,
+    },
+    detailLoadingText: { fontSize: 13, color: colors.textTertiary },
+    detailSection: { marginTop: 16 },
+    detailSectionTitle: {
+      fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 10,
+    },
+    detailBody: {
+      fontSize: 14, color: colors.textSecondary, lineHeight: 22,
+    },
+    ingredientRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingVertical: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+    },
+    ingredientDot: {
+      width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent,
+    },
+    ingredientText: { fontSize: 14, color: colors.text, flex: 1 },
+    sourceButton: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, marginTop: 20, paddingVertical: 14,
+      borderRadius: 25, borderWidth: 1.5, borderColor: colors.accent,
+    },
+    sourceButtonText: { fontSize: 15, fontWeight: '600', color: colors.accent },
 
     // Match Alert Modal
     matchOverlay: {

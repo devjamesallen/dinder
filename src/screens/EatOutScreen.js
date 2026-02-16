@@ -212,6 +212,7 @@ export default function EatOutScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.swiperArea}>
       <Swiper
         ref={swiperRef}
         cards={restaurants}
@@ -361,10 +362,11 @@ export default function EatOutScreen({ navigation }) {
           },
         }}
       />
+      </View>
 
-      {/* Mode toggle pill + Action buttons */}
-      <View style={styles.bottomArea}>
-        {hasGroup && (
+      {/* Mode toggle pill */}
+      {hasGroup && (
+        <View style={styles.bottomArea}>
           <TouchableOpacity
             style={styles.modePill}
             onPress={() => {
@@ -383,31 +385,8 @@ export default function EatOutScreen({ navigation }) {
             </Text>
             <Ionicons name="swap-horizontal" size={12} color={colors.textTertiary} />
           </TouchableOpacity>
-        )}
-
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.skipButton]}
-            onPress={() => swiperRef.current?.swipeLeft()}
-          >
-            <Ionicons name="close" size={30} color={colors.error} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.refreshButton]}
-            onPress={loadRestaurants}
-          >
-            <Ionicons name="refresh" size={22} color={colors.textTertiary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.likeButton]}
-            onPress={() => swiperRef.current?.swipeRight()}
-          >
-            <Ionicons name="heart" size={30} color={colors.success} />
-          </TouchableOpacity>
         </View>
-      </View>
+      )}
 
       {/* Match Popup */}
       <Modal
@@ -461,6 +440,9 @@ function createStyles(colors) {
       flex: 1,
       backgroundColor: colors.background,
     },
+    swiperArea: {
+      flex: 1,
+    },
     centered: {
       flex: 1,
       justifyContent: 'center',
@@ -479,10 +461,12 @@ function createStyles(colors) {
     },
     retryText: { color: colors.background, fontSize: 16, fontWeight: '600' },
 
-    // Bottom area with mode pill + buttons
+    // Bottom area with mode pill
     bottomArea: {
       alignItems: 'center',
-      paddingBottom: 8,
+      paddingVertical: 12,
+      zIndex: 20,
+      elevation: 20,
     },
     modePill: {
       flexDirection: 'row',
@@ -602,28 +586,6 @@ function createStyles(colors) {
       gap: 4,
     },
     addressText: { color: colors.textSecondary, fontSize: 13, flex: 1, lineHeight: 18 },
-
-    // Buttons
-    buttonRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingBottom: 16,
-      gap: 24,
-    },
-    actionButton: {
-      width: 56, height: 56, borderRadius: 28,
-      justifyContent: 'center', alignItems: 'center',
-      backgroundColor: colors.background,
-      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1, shadowRadius: 6, elevation: 4,
-    },
-    skipButton: { borderWidth: 2, borderColor: colors.border },
-    likeButton: { borderWidth: 2, borderColor: colors.border },
-    refreshButton: {
-      borderWidth: 1, borderColor: colors.border,
-      width: 42, height: 42, borderRadius: 21,
-    },
 
     // Match popup
     matchOverlay: {

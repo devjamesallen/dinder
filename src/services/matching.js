@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  deleteDoc,
   query,
   where,
   getDocs,
@@ -51,6 +52,8 @@ export async function saveSwipe(userId, groupId, placeId, direction, restaurantD
     restaurantRating: restaurantData.rating,
     restaurantCuisines: restaurantData.cuisines,
     restaurantAddress: restaurantData.address,
+    restaurantPhone: restaurantData.phoneNumber || null,
+    restaurantWebsite: restaurantData.website || null,
     timestamp: serverTimestamp(),
   });
 
@@ -117,6 +120,8 @@ async function createMatch(groupId, placeId, restaurantData, members, rightCount
     restaurantCuisines: restaurantData.cuisines,
     restaurantAddress: restaurantData.address,
     restaurantPriceLevel: restaurantData.priceLevel,
+    restaurantPhone: restaurantData.phoneNumber || null,
+    restaurantWebsite: restaurantData.website || null,
     matchedAt: serverTimestamp(),
     status: 'active', // active | visited | archived
   };
@@ -311,4 +316,38 @@ export async function getSwipedRecipeIds(userId, groupId) {
  */
 export async function updateRecipeMatchStatus(matchId, status) {
   await setDoc(doc(db, 'recipeMatches', matchId), { status }, { merge: true });
+}
+
+/**
+ * Listen to solo liked restaurants (right swipes with no group) in real-time.
+ * Returns an unsubscribe function.
+ */
+export function listenToSoloLikes(userId, callback) {
+  if (!userId) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'swipes'),
+    where('userId', '==', userId),
+    where('groupId', '==', null),
+    where('direction', '==', 'right'),
+    orderBy('timestamp', 'desc')
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const likes = snapshot.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+    }));
+    callback(likes);
+  });
+}
+
+/**
+ * Remove a solo liked restaurant by deleting the swipe document.
+ */
+export async function removeSoloLike(swipeId) {
+  await deleteDoc(doc(db, 'swipes', swipeId));
 }

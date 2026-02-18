@@ -39,6 +39,7 @@ export default function GroupsScreen({ navigation }) {
   const uid = state.firebaseUser?.uid;
   const displayName = state.userProfile?.displayName || '';
   const activeGroupId = state.userProfile?.activeGroupId || null;
+  const hasGroup = !!activeGroupId;
 
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -341,6 +342,28 @@ export default function GroupsScreen({ navigation }) {
           <Ionicons name="settings-outline" size={14} color={colors.textTertiary} />
         </TouchableOpacity>
 
+        {/* Group feature links */}
+        {isActive && (
+          <View style={styles.groupLinks}>
+            <TouchableOpacity
+              style={styles.groupLink}
+              onPress={() => navigation.navigate('Matches')}
+            >
+              <Ionicons name="heart-outline" size={16} color={colors.accent} />
+              <Text style={styles.groupLinkText}>Restaurant Matches</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.groupLink}
+              onPress={() => navigation.navigate('RecipeMatches')}
+            >
+              <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
+              <Text style={styles.groupLinkText}>Group Meal Plan</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.groupCardActions}>
           <TouchableOpacity
             style={styles.shareBtn}
@@ -378,30 +401,82 @@ export default function GroupsScreen({ navigation }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Group list */}
-      {groups.length > 0 ? (
-        <FlatList
-          data={groups}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGroup}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <Text style={styles.hint}>
-              Tap a group to make it active. Long-press to leave.
+      <FlatList
+        data={groups}
+        keyExtractor={(item) => item.id}
+        renderItem={renderGroup}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <>
+            {/* Solo card — always visible, tappable to go solo */}
+            <TouchableOpacity
+              style={[styles.groupCard, !hasGroup && styles.groupCardActive]}
+              onPress={() => {
+                if (hasGroup) handleSetActive(null);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.groupCardHeader}>
+                <View style={styles.groupCardLeft}>
+                  <View style={[styles.groupIcon, !hasGroup && styles.groupIconActive]}>
+                    <Ionicons
+                      name="person"
+                      size={20}
+                      color={!hasGroup ? '#FFFFFF' : colors.accent}
+                    />
+                  </View>
+                  <View style={styles.groupCardText}>
+                    <View style={styles.groupNameRow}>
+                      <Text style={styles.groupName}>Solo</Text>
+                      {!hasGroup && (
+                        <View style={styles.activeBadge}>
+                          <Text style={styles.activeBadgeText}>Active</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.groupMembers}>Your personal swipes & meals</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.groupLinks}>
+                <TouchableOpacity
+                  style={styles.groupLink}
+                  onPress={() => navigation.navigate('LikedRestaurants')}
+                >
+                  <Ionicons name="heart-outline" size={16} color={colors.accent} />
+                  <Text style={styles.groupLinkText}>Liked Restaurants</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.groupLink}
+                  onPress={() => navigation.navigate('MealPlan')}
+                >
+                  <Ionicons name="cart-outline" size={16} color={colors.accent} />
+                  <Text style={styles.groupLinkText}>Meal Plan & Grocery List</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+
+            {groups.length > 0 && (
+              <Text style={styles.hint}>
+                Tap a group to make it active. Long-press to leave.
+              </Text>
+            )}
+          </>
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyInline}>
+            <Text style={styles.emptySubtitle}>
+              Create a group or join one with an invite code to start swiping together!
             </Text>
-          }
-          ListFooterComponent={<View style={{ height: 120 }} />}
-        />
-      ) : (
-        <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={64} color={colors.textTertiary} />
-          <Text style={styles.emptyTitle}>No groups yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Create a group or join one with an invite code to start swiping together!
-          </Text>
-        </View>
-      )}
+          </View>
+        }
+        ListFooterComponent={<View style={{ height: 120 }} />}
+      />
 
       {/* Join with code section */}
       <View style={styles.joinSection}>
@@ -656,6 +731,10 @@ function createStyles(colors) {
       marginTop: 8,
       lineHeight: 22,
     },
+    emptyInline: {
+      padding: 20,
+      alignItems: 'center',
+    },
 
     // ── Group card ──
     groupCard: {
@@ -721,6 +800,28 @@ function createStyles(colors) {
       fontSize: 13,
       color: colors.textSecondary,
       marginTop: 3,
+    },
+
+    // ── Group feature links ──
+    groupLinks: {
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      gap: 2,
+    },
+    groupLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
+    groupLinkText: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.text,
     },
 
     // ── Group card actions ──

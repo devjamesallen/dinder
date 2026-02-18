@@ -28,7 +28,7 @@ import {
   getSwipedRecipeIds,
 } from '../services/matching';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 const CARD_HEIGHT = height * 0.72;
 
 // Filter options
@@ -110,23 +110,19 @@ export default function SwipeScreen({ navigation }) {
   const [filterMaxTime, setFilterMaxTime] = useState(null);
   const [needsNewDeck, setNeedsNewDeck] = useState(false);
 
-  // ── Set header right filter button (group mode) ───────────
+  // ── Set header right filter button ───────────
   useLayoutEffect(() => {
-    if (isGroupMode) {
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity
-            onPress={() => setShowFilters(true)}
-            style={{ padding: 8, marginRight: 4 }}
-          >
-            <Ionicons name="options-outline" size={22} color={colors.accent} />
-          </TouchableOpacity>
-        ),
-      });
-    } else {
-      navigation.setOptions({ headerRight: undefined });
-    }
-  }, [navigation, isGroupMode, colors]);
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setShowFilters(true)}
+          style={{ padding: 8, marginRight: 4 }}
+        >
+          <Ionicons name="options-outline" size={22} color={colors.accent} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, colors]);
 
   // ── Solo mode: random recipes ─────────────────────────────
   const loadSoloRecipes = useCallback(async () => {
@@ -288,7 +284,31 @@ export default function SwipeScreen({ navigation }) {
         setLoading(false);
       }
     } else {
+      // Solo mode: fetch filtered recipes
       setShowFilters(false);
+      setLoading(true);
+      try {
+        const filters = {};
+        if (filterCuisine !== 'Any') filters.cuisine = filterCuisine;
+        if (filterDiet !== 'Any') filters.diet = filterDiet;
+        if (filterMaxTime) filters.maxTime = filterMaxTime;
+
+        let fetched;
+        if (Object.keys(filters).length > 0) {
+          fetched = await fetchFilteredRecipes(filters, 10);
+        } else {
+          fetched = await fetchRandomRecipes(10);
+        }
+
+        const seenIds = [...state.mealPlan.map(r => r.id), ...state.skippedIds];
+        const fresh = fetched.filter(r => !seenIds.includes(r.id));
+        setRecipes(fresh.length > 0 ? fresh : fetched);
+        setCardIndex(0);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 

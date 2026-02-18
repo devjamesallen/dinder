@@ -22,6 +22,7 @@ import MealPlanScreen from './src/screens/MealPlanScreen';
 import RecipeMatchesScreen from './src/screens/RecipeMatchesScreen';
 import GroceryListScreen from './src/screens/GroceryListScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import LikedRestaurantsScreen from './src/screens/LikedRestaurantsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -165,6 +166,11 @@ function AppNavigator() {
               name="Settings"
               component={SettingsScreen}
               options={{ title: 'Settings' }}
+            />
+            <Stack.Screen
+              name="LikedRestaurants"
+              component={LikedRestaurantsScreen}
+              options={{ title: 'Liked Restaurants' }}
             />
           </>
         )}

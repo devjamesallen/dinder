@@ -21,6 +21,8 @@ const FIELD_MASK = [
   'places.photos',
   'places.currentOpeningHours',
   'places.location',
+  'places.nationalPhoneNumber',
+  'places.websiteUri',
 ].join(',');
 
 /**
@@ -189,6 +191,8 @@ function formatPlace(place, userLat, userLng) {
     address: place.shortFormattedAddress || place.formattedAddress || '',
     isOpenNow: place.currentOpeningHours?.openNow,
     photo: photoName ? getPhotoUrl(photoName) : null,
+    phoneNumber: place.nationalPhoneNumber || null,
+    website: place.websiteUri || null,
     cuisines: extractCuisines(place.types, place.primaryType, place.displayName?.text),
     location: { lat, lng },
     distance: (userLat && userLng && lat && lng)

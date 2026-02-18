@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,9 @@ import {
   Image,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
+  ScrollView,
+  Linking,
   Dimensions,
   Modal,
 } from 'react-native';
@@ -17,10 +20,29 @@ import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { searchAllNearbyRestaurants } from '../services/googlePlaces';
 import { saveSwipe, getSwipedPlaceIds } from '../services/matching';
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 const CARD_HEIGHT = height * 0.72;
 
 const PRICE_LABELS = ['', '$', '$$', '$$$', '$$$$'];
+
+// Filter options
+const CUISINE_OPTIONS = [
+  'Any', 'American', 'Italian', 'Mexican', 'Chinese', 'Japanese',
+  'Thai', 'Indian', 'Korean', 'Mediterranean', 'Seafood', 'Pizza', 'BBQ',
+];
+const PRICE_OPTIONS = [
+  { label: 'Any', value: 0 },
+  { label: '$', value: 1 },
+  { label: '$$', value: 2 },
+  { label: '$$$', value: 3 },
+  { label: '$$$$', value: 4 },
+];
+const RATING_OPTIONS = [
+  { label: 'Any', value: 0 },
+  { label: '3.5+', value: 3.5 },
+  { label: '4.0+', value: 4.0 },
+  { label: '4.5+', value: 4.5 },
+];
 
 function StarRating({ rating, colors }) {
   const stars = [];
@@ -50,6 +72,14 @@ export default function EatOutScreen({ navigation }) {
   const [cardIndex, setCardIndex] = useState(0);
   const [matchPopup, setMatchPopup] = useState(null);
   const swiperRef = useRef(null);
+  const allRestaurantsRef = useRef([]);
+
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCuisine, setFilterCuisine] = useState('Any');
+  const [filterPrice, setFilterPrice] = useState(0);
+  const [filterOpenOnly, setFilterOpenOnly] = useState(false);
+  const [filterMinRating, setFilterMinRating] = useState(0);
 
   const userId = state.firebaseUser?.uid;
   const activeGroupId = state.userProfile?.activeGroupId || null;
@@ -62,6 +92,53 @@ export default function EatOutScreen({ navigation }) {
   // Use group's pinned location if set (and in group mode)
   const groupLat = isGroupMode ? (activeGroup?.locationLat || null) : null;
   const groupLng = isGroupMode ? (activeGroup?.locationLng || null) : null;
+
+  // Header filter button
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setShowFilters(true)}
+          style={{ padding: 8, marginRight: 4 }}
+        >
+          <Ionicons name="options-outline" size={22} color={colors.accent} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, colors]);
+
+  // Apply filters to the full restaurant list
+  const applyFilters = useCallback((list) => {
+    return list.filter(r => {
+      if (filterCuisine !== 'Any') {
+        const hasCuisine = r.cuisines.some(c =>
+          c.toLowerCase().includes(filterCuisine.toLowerCase())
+        );
+        if (!hasCuisine) return false;
+      }
+      if (filterPrice > 0 && r.priceLevel !== filterPrice) return false;
+      if (filterOpenOnly && !r.isOpenNow) return false;
+      if (filterMinRating > 0 && r.rating < filterMinRating) return false;
+      return true;
+    });
+  }, [filterCuisine, filterPrice, filterOpenOnly, filterMinRating]);
+
+  const handleApplyFilters = () => {
+    const filtered = applyFilters(allRestaurantsRef.current);
+    setRestaurants(filtered);
+    setCardIndex(0);
+    setShowFilters(false);
+  };
+
+  const handleClearFilters = () => {
+    setFilterCuisine('Any');
+    setFilterPrice(0);
+    setFilterOpenOnly(false);
+    setFilterMinRating(0);
+    setRestaurants(allRestaurantsRef.current);
+    setCardIndex(0);
+    setShowFilters(false);
+  };
 
   const loadRestaurants = useCallback(async () => {
     setLoading(true);
@@ -132,14 +209,16 @@ export default function EatOutScreen({ navigation }) {
         return true;
       });
 
-      setRestaurants(deduped);
+      allRestaurantsRef.current = deduped;
+      const filtered = applyFilters(deduped);
+      setRestaurants(filtered);
       setCardIndex(0);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [radiusMiles, userId, activeGroupId, groupLat, groupLng, isGroupMode]);
+  }, [radiusMiles, userId, activeGroupId, groupLat, groupLng, isGroupMode, applyFilters]);
 
   useEffect(() => {
     loadRestaurants();
@@ -157,6 +236,8 @@ export default function EatOutScreen({ navigation }) {
         cuisines: restaurant.cuisines,
         address: restaurant.address,
         priceLevel: restaurant.priceLevel,
+        phoneNumber: restaurant.phoneNumber,
+        website: restaurant.website,
       });
 
       if (match) {
@@ -198,14 +279,25 @@ export default function EatOutScreen({ navigation }) {
   }
 
   if (restaurants.length === 0) {
+    const hasActiveFilters = filterCuisine !== 'Any' || filterPrice > 0 || filterOpenOnly || filterMinRating > 0;
     return (
       <View style={styles.centered}>
-        <Ionicons name="sad-outline" size={48} color={colors.textTertiary} />
-        <Text style={styles.emptyText}>No restaurants found nearby</Text>
-        <Text style={styles.emptyHint}>Try increasing your search radius in Settings</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadRestaurants}>
-          <Text style={styles.retryText}>Refresh</Text>
-        </TouchableOpacity>
+        <Ionicons name={hasActiveFilters ? 'filter-outline' : 'sad-outline'} size={48} color={colors.textTertiary} />
+        <Text style={styles.emptyText}>
+          {hasActiveFilters ? 'No restaurants match your filters' : 'No restaurants found nearby'}
+        </Text>
+        <Text style={styles.emptyHint}>
+          {hasActiveFilters ? 'Try adjusting or clearing your filters' : 'Try increasing your search radius in Settings'}
+        </Text>
+        {hasActiveFilters ? (
+          <TouchableOpacity style={styles.retryButton} onPress={handleClearFilters}>
+            <Text style={styles.retryText}>Clear Filters</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.retryButton} onPress={loadRestaurants}>
+            <Text style={styles.retryText}>Refresh</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -320,6 +412,28 @@ export default function EatOutScreen({ navigation }) {
                     {restaurant.address}
                   </Text>
                 </View>
+
+                {/* Phone & Website */}
+                <View style={styles.contactRow}>
+                  {restaurant.phoneNumber && (
+                    <TouchableOpacity
+                      style={styles.contactChip}
+                      onPress={() => Linking.openURL(`tel:${restaurant.phoneNumber}`)}
+                    >
+                      <Ionicons name="call-outline" size={13} color={colors.accent} />
+                      <Text style={styles.contactText}>{restaurant.phoneNumber}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {restaurant.website && (
+                    <TouchableOpacity
+                      style={styles.contactChip}
+                      onPress={() => Linking.openURL(restaurant.website)}
+                    >
+                      <Ionicons name="globe-outline" size={13} color={colors.accent} />
+                      <Text style={styles.contactText}>Website</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
           );
@@ -429,6 +543,96 @@ export default function EatOutScreen({ navigation }) {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Filter Modal */}
+      <Modal visible={showFilters} animationType="slide" transparent>
+        <Pressable style={styles.filterOverlay} onPress={() => setShowFilters(false)}>
+          <Pressable style={styles.filterSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filter Restaurants</Text>
+              <TouchableOpacity onPress={() => setShowFilters(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+              {/* Cuisine */}
+              <Text style={styles.filterLabel}>Cuisine</Text>
+              <View style={styles.chipRow}>
+                {CUISINE_OPTIONS.map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.chip, filterCuisine === c && styles.chipActive]}
+                    onPress={() => setFilterCuisine(c)}
+                  >
+                    <Text style={[styles.chipText, filterCuisine === c && styles.chipTextActive]}>
+                      {c}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Price */}
+              <Text style={styles.filterLabel}>Price</Text>
+              <View style={styles.chipRow}>
+                {PRICE_OPTIONS.map(p => (
+                  <TouchableOpacity
+                    key={p.label}
+                    style={[styles.chip, filterPrice === p.value && styles.chipActive]}
+                    onPress={() => setFilterPrice(p.value)}
+                  >
+                    <Text style={[styles.chipText, filterPrice === p.value && styles.chipTextActive]}>
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Open Now */}
+              <Text style={styles.filterLabel}>Status</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.chip, !filterOpenOnly && styles.chipActive]}
+                  onPress={() => setFilterOpenOnly(false)}
+                >
+                  <Text style={[styles.chipText, !filterOpenOnly && styles.chipTextActive]}>Any</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chip, filterOpenOnly && styles.chipActive]}
+                  onPress={() => setFilterOpenOnly(true)}
+                >
+                  <Text style={[styles.chipText, filterOpenOnly && styles.chipTextActive]}>Open Now</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Rating */}
+              <Text style={styles.filterLabel}>Minimum Rating</Text>
+              <View style={styles.chipRow}>
+                {RATING_OPTIONS.map(r => (
+                  <TouchableOpacity
+                    key={r.label}
+                    style={[styles.chip, filterMinRating === r.value && styles.chipActive]}
+                    onPress={() => setFilterMinRating(r.value)}
+                  >
+                    <Text style={[styles.chipText, filterMinRating === r.value && styles.chipTextActive]}>
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={styles.filterButtons}>
+              <TouchableOpacity style={styles.filterClearButton} onPress={handleClearFilters}>
+                <Text style={styles.filterClearText}>Clear All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.filterApplyButton} onPress={handleApplyFilters}>
+                <Text style={styles.filterApplyText}>Apply Filters</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -586,6 +790,16 @@ function createStyles(colors) {
       gap: 4,
     },
     addressText: { color: colors.textSecondary, fontSize: 13, flex: 1, lineHeight: 18 },
+    contactRow: {
+      flexDirection: 'row', gap: 8, flexWrap: 'wrap',
+    },
+    contactChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      paddingHorizontal: 10, paddingVertical: 4,
+      borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.12)',
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    },
+    contactText: { fontSize: 12, fontWeight: '600', color: colors.accent },
 
     // Match popup
     matchOverlay: {
@@ -627,5 +841,49 @@ function createStyles(colors) {
       paddingVertical: 12, alignItems: 'center',
     },
     matchContinueText: { color: colors.textSecondary, fontSize: 15 },
+
+    // Filter modal
+    filterOverlay: {
+      flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    filterSheet: {
+      backgroundColor: colors.background, borderTopLeftRadius: 24,
+      borderTopRightRadius: 24, paddingBottom: 40, maxHeight: height * 0.75,
+    },
+    filterHeader: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      padding: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+    },
+    filterTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+    filterScroll: { paddingHorizontal: 20, paddingTop: 8 },
+    filterLabel: {
+      fontSize: 15, fontWeight: '600', color: colors.text,
+      marginTop: 16, marginBottom: 10,
+    },
+    chipRow: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    },
+    chip: {
+      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+      backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    },
+    chipActive: {
+      backgroundColor: colors.accent, borderColor: colors.accent,
+    },
+    chipText: { fontSize: 13, color: colors.text, fontWeight: '500' },
+    chipTextActive: { color: colors.background },
+    filterButtons: {
+      flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 20,
+    },
+    filterClearButton: {
+      flex: 1, paddingVertical: 14, borderRadius: 25,
+      backgroundColor: colors.inputBg, alignItems: 'center',
+    },
+    filterClearText: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
+    filterApplyButton: {
+      flex: 2, paddingVertical: 14, borderRadius: 25,
+      backgroundColor: colors.accent, alignItems: 'center',
+    },
+    filterApplyText: { color: colors.background, fontSize: 15, fontWeight: 'bold' },
   });
 }

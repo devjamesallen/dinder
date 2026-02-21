@@ -28,7 +28,7 @@ const Stack = createNativeStackNavigator();
 
 // Deep linking configuration
 const linking = {
-  prefixes: [Linking.createURL('/'), 'dinder://'],
+  prefixes: [Linking.createURL('/'), 'grubswipe://'],
   config: {
     screens: {
       JoinGroup: 'join/:inviteCode',

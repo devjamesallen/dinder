@@ -1,39 +1,39 @@
 {
   "expo": {
-    "name": "dinder",
-    "slug": "dinder",
+    "name": "GrubSwipe",
+    "slug": "grubswipe",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/GrubSwipe_Icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/GrubSwipe_Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#FF6B35"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dinder",
+      "bundleIdentifier": "com.grubswipe",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/GrubSwipe_Icon.png",
         "backgroundColor": "#FF6B35"
       },
-      "package": "com.dinder",
+      "package": "com.grubswipe",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/GrubSwipe_Icon.png"
     },
-    "scheme": "dinder",
+    "scheme": "grubswipe",
     "plugins": [
       "expo-asset",
       "expo-secure-store",
@@ -41,7 +41,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "dinder needs your location to find restaurants near you."
+          "locationWhenInUsePermission": "GrubSwipe needs your location to find restaurants near you."
         }
       ]
     ],

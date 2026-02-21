@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-grub-orange: #FF6B35;
+  --color-grub-red: #8B1A1A;
+  --color-grub-warm: #FF8C42;
+  --color-grub-deep: #C41E3A;
+  --color-grub-cream: #FFF8F0;
+  --color-grub-dark: #2D1B0E;
+}
+
+/* System font stack — zero external requests */
+html {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--color-grub-dark);
+  background: white;
+}

@@ -147,7 +147,7 @@ export default function GroupsScreen({ navigation }) {
   const handleShare = async (group) => {
     try {
       await Share.share({
-        message: `Let's swipe together and eat together on Dinder! Join my group "${group.name}" — open the app and enter this code:\n\n${group.inviteCode}`,
+        message: `Let's swipe together and eat together on GrubSwipe! Join my group "${group.name}" — open the app and enter this code:\n\n${group.inviteCode}`,
       });
     } catch (e) {
       // User cancelled
@@ -385,7 +385,7 @@ export default function GroupsScreen({ navigation }) {
     return (
       <View style={styles.centered}>
         <Image
-          source={require('../../assets/logo.png')}
+          source={require('../../assets/GrubSwipe_Logo.png')}
           style={styles.loadingLogo}
           resizeMode="contain"
         />

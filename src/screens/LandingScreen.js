@@ -62,7 +62,7 @@ export default function LandingScreen({ navigation }) {
       {/* Logo + Greeting */}
       <View style={styles.header}>
         <Image
-          source={require("../../assets/logo.png")}
+          source={require("../../assets/GrubSwipe_Logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />

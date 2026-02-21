@@ -5,7 +5,7 @@ import { getUserProfile } from '../services/firebase';
 
 const AppContext = createContext();
 
-const STORAGE_KEY = '@dinder_state';
+const STORAGE_KEY = '@grubswipe_state';
 
 const initialState = {
   // Auth & User

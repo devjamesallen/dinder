@@ -1,5 +1,5 @@
 // ============================================================
-// Dinder Configuration
+// GrubSwipe Configuration
 // ============================================================
 // Copy this file to config.js and fill in your API keys:
 //   cp src/config.example.js src/config.js
@@ -29,7 +29,7 @@ export const KROGER_CLIENT_ID = 'YOUR_KROGER_CLIENT_ID';
 export const KROGER_CLIENT_SECRET = 'YOUR_KROGER_CLIENT_SECRET';
 export const KROGER_BASE_URL = 'https://api.kroger.com/v1';
 export const KROGER_AUTH_URL = 'https://api.kroger.com/v1/connect/oauth2';
-export const KROGER_REDIRECT_URI = 'dinder://auth/callback';
+export const KROGER_REDIRECT_URI = 'grubswipe://auth/callback';
 
 // ----- App Settings -----
 export const RECIPES_PER_BATCH = 10;

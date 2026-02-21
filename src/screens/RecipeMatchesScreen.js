@@ -151,7 +151,7 @@ export default function RecipeMatchesScreen({ navigation }) {
     return (
       <View style={styles.centered}>
         <Image
-          source={require('../../assets/logo.png')}
+          source={require('../../assets/GrubSwipe_Logo.png')}
           style={styles.loadingLogo}
           resizeMode="contain"
         />

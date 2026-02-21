@@ -79,7 +79,7 @@ export default function AuthScreen() {
           >
             <View style={styles.logoSection}>
               <Image
-                source={require("../../assets/logo.png")}
+                source={require("../../assets/GrubSwipe_Logo.png")}
                 style={styles.logo}
                 resizeMode="contain"
               />

@@ -1,4 +1,4 @@
-# Dinder Setup Guide
+# GrubSwipe Setup Guide
 
 A couples dinner app with three features: **Eat Out** (restaurant swiping & matching), **Eat In** (recipe swiping), and **Meal Plan** (smart grocery list → Kroger Clicklist).
 
@@ -7,7 +7,7 @@ A couples dinner app with three features: **Eat Out** (restaurant swiping & matc
 ### 1. Install Dependencies
 
 ```bash
-cd Dinder
+cd GrubSwipe
 npm install
 npx expo install firebase expo-location
 ```
@@ -15,7 +15,7 @@ npx expo install firebase expo-location
 ### 2. Set Up Firebase (Required for Eat Out + Accounts)
 
 1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Click **"Create a project"** → name it something like `dinder-app`
+2. Click **"Create a project"** → name it something like `grubswipe-app`
 3. Once created, click the **Web** icon (`</>`) to add a web app
 4. Copy the config object — you'll need these values
 
@@ -68,8 +68,8 @@ export const GOOGLE_PLACES_API_KEY = 'your-actual-google-places-api-key';
 ### 4. Kroger API (Already Configured!)
 
 Your Kroger credentials are already set in `src/config.js`:
-- Client ID: `dinder-bbcc0ltk`
-- Redirect URI: `dinder://auth/callback`
+- Client ID: `dinder-bbcc0ltk` (registered under old "Dinder" name — still valid)
+- Redirect URI: `grubswipe://auth/callback`
 
 ### 5. Run the App
 
@@ -84,7 +84,7 @@ Scan the QR code with:
 ## How It Works
 
 ### Landing Screen
-When you open the app, you'll see the Dinder logo with three feature cards:
+When you open the app, you'll see the GrubSwipe logo with three feature cards:
 - **Eat Out** — Swipe on nearby restaurants with your partner
 - **Eat In** — Swipe on recipes to build a dinner menu
 - **Meal Plan** — View selected recipes and build a grocery list
@@ -122,7 +122,7 @@ When you open the app, you'll see the Dinder logo with three feature cards:
 ## Troubleshooting
 
 **"Location permission needed"**
-→ Make sure you've granted location access. On iOS, check Settings → Dinder → Location.
+→ Make sure you've granted location access. On iOS, check Settings → GrubSwipe → Location.
 
 **No restaurants showing up**
 → Verify your Google Places API key is correct in `src/config.js`. Try increasing the search radius in Settings.
@@ -131,7 +131,7 @@ When you open the app, you'll see the Dinder logo with three feature cards:
 → Double-check that Email/Password auth is enabled in Firebase console and your config values match exactly.
 
 **"Token exchange failed" (Kroger)**
-→ Make sure your Kroger redirect URI matches exactly: `dinder://auth/callback`
+→ Make sure your Kroger redirect URI matches exactly: `grubswipe://auth/callback`
 
 **Products not found on Kroger**
 → Make sure you've selected a store in Settings — product availability varies by location.

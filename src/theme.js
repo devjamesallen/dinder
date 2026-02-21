@@ -1,5 +1,5 @@
 /**
- * Dinder Theme — light & dark color palettes
+ * GrubSwipe Theme — light & dark color palettes
  *
  * Accent colors (orange, green, red, gold) stay the same in both modes
  * because they serve semantic purposes (action, success, error, rating).

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightColors, getColors } from '../theme';
 
 const ThemeContext = createContext();
-const STORAGE_KEY = '@dinder_dark_mode';
+const STORAGE_KEY = '@grubswipe_dark_mode';
 
 const initialState = {
   isDarkMode: false,

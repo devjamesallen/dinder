@@ -28,7 +28,7 @@ export default function InviteScreen({ navigation }) {
   const handleShareCode = async () => {
     try {
       await Share.share({
-        message: `Join me on dinder! Use my invite code: ${myCode}`,
+        message: `Join me on GrubSwipe! Use my invite code: ${myCode}`,
       });
     } catch (e) {
       // User cancelled
